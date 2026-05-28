@@ -4,6 +4,30 @@
 
 ---
 
+## P009 — scan-and-append composite subcmd (2026-05-28)
+
+**Type:** feat | **Tầng:** 1 | **Lane:** Guarded
+
+### Added
+
+- `cli/scan_and_append.rs` real impl: composes `sentinel::extract_block` → `row::parse_row` → `state::read` → dedup partition → `inbox::insert_rows` → `inbox::write_atomic` (inbox FIRST) → `state::write_atomic` (state SECOND) in one invocation. Emits `{ "appended": N, "skipped_dedup": M, "total_open": K }` to stdout. Exit 0/1/2 per ARCHITECTURE §1.
+- Sub-mech C: `seen_advisories` monotonic non-shrink (BTreeSet union of pre.seen_advisories ∪ observed_ids). `last_scan_at` UPDATED to `Utc::now()` (scan event). `agent_version` + `schema_version` PRESERVED.
+- `tests/scan_and_append_cli.rs` — 3 integration tests: happy (1 kept/1 skipped, Sub-mech C), all-skipped (0 appended, last_scan_at still bumped), empty-block (0/0, last_scan_at bumped). Test B uses `parse-report --input` at runtime to extract IDs (robust to fixture changes).
+
+### Changed
+
+- `main.rs` `Commands::ScanAndAppend` dispatch arm: replaced stub passthrough with 5-family error→exit-code map (`SentinelError || StateReadError` → 1; `RowParseError || StateWriteError || InboxError::Io || fallback` → 2; `InboxError::MissingRowsHeading || InboxError::ParseRow` → 1). Tail `Ok(())` per match-arm uniformity (P004 precedent).
+
+### Atomicity caveat (documented — IMPORTANT)
+
+`scan-and-append` is NOT cross-file atomic. It writes TWO files (`inbox` markdown + `state` JSON) via two separate INV-LOCAL-002 atomic writes. Write order is **inbox FIRST, state SECOND** (safer failure mode: worst case = duplicate rows visible, recoverable via `state-backfill`). If state write fails after inbox write succeeded: run `advisory-inbox state-backfill` to reconcile. `state::write_atomic` is now the FOURTH caller of INV-LOCAL-002 (P006 inbox, P007 migrate-state, P008 state-backfill, P009 scan-and-append).
+
+### Test counts
+
+Baseline 59 (post-P008) → post-P009 62 (39 unit + 23 integration).
+
+---
+
 ## P008 — state-backfill subcmd (2026-05-28)
 
 **Type:** feat | **Tầng:** 1 | **Lane:** Guarded

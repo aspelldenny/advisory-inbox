@@ -180,7 +180,31 @@ fn main() -> Result<()> {
             report,
             inbox,
             state,
-        } => cli::scan_and_append::run(report, inbox, state),
+        } => {
+            if let Err(e) = cli::scan_and_append::run(report, inbox, state) {
+                let code = if e.downcast_ref::<crate::sentinel::SentinelError>().is_some()
+                    || e.downcast_ref::<crate::state::StateReadError>().is_some()
+                {
+                    1 // sentinel missing or state unreadable → exit 1
+                } else if e.downcast_ref::<crate::row::RowParseError>().is_some() {
+                    2 // row parse failure → exit 2
+                } else if let Some(ie) = e.downcast_ref::<crate::inbox::InboxError>() {
+                    match ie {
+                        crate::inbox::InboxError::MissingRowsHeading { .. } => 1,
+                        crate::inbox::InboxError::ParseRow { .. } => 1,
+                        crate::inbox::InboxError::Io { .. } => 2,
+                    }
+                } else if e.downcast_ref::<crate::state::StateWriteError>().is_some() {
+                    2 // state write failure → exit 2
+                } else {
+                    // Fallback: stdin read fail / unexpected → exit 2 (write/IO bucket).
+                    2
+                };
+                eprintln!("error: {:#}", e);
+                std::process::exit(code);
+            }
+            Ok(())
+        }
         Commands::Serve => cli::serve::run(),
         Commands::Init {
             inbox_path,

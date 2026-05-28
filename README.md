@@ -147,3 +147,44 @@ advisory-inbox state-backfill --state <FILE> --inbox <FILE> [--dry-run]
 | `2`  | Write error (permission denied, disk full, etc.) |
 
 **Atomic write:** state file write uses temp+fsync+rename per INV-LOCAL-002 — crash-safe.
+
+### `scan-and-append`
+
+Composite: parse agent report → dedup → append to inbox → update state — all in one command. Replaces the 142-line Bash heredoc pipeline.
+
+```bash
+advisory-inbox scan-and-append \
+  --report path/to/agent-report.md \
+  --inbox path/to/advisory-inbox.md \
+  --state path/to/.advisory-scan-state
+
+# Or read report from stdin (omit --report):
+cat path/to/agent-report.md | advisory-inbox scan-and-append \
+  --inbox path/to/advisory-inbox.md \
+  --state path/to/.advisory-scan-state
+```
+
+**Output (stdout JSON):**
+
+```json
+{"appended": 2, "skipped_dedup": 1, "total_open": 5}
+```
+
+- `appended` — new rows inserted into inbox (advisory IDs not yet in state).
+- `skipped_dedup` — rows whose `advisory_id` was already in `seen_advisories[]` (skipped).
+- `total_open` — count of `open` rows in the inbox after insertion.
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Success (including empty sentinel block — `appended: 0` is valid) |
+| `1`  | Input error: sentinel markers missing, state file unreadable/wrong schema, or inbox missing `## Rows` heading |
+| `2`  | Write error: row parse failure, I/O error on inbox or state write, disk full, etc. |
+
+**Atomicity caveat:** This composite writes TWO files (inbox markdown + state JSON) via separate atomic writes (INV-LOCAL-002 per file). The PAIR is NOT cross-file transactional. Write order is **inbox first, state second** — if state write fails after inbox write succeeded, run `advisory-inbox state-backfill` to reconcile.
+
+**State updates:**
+- `seen_advisories[]` — extended with all observed IDs (kept ∪ skipped). Monotonic, never shrinks.
+- `last_scan_at` — updated to current UTC time (scan event).
+- `agent_version` + `schema_version` — preserved unchanged.
