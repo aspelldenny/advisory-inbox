@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 mod cli;
 mod row;
+mod sentinel;
 mod state;
 
 #[derive(Parser)]

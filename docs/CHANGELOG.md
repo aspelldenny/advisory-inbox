@@ -4,6 +4,23 @@
 
 ---
 
+## P003 — Sentinel parser (2026-05-28)
+
+**Type:** feat | **Tầng:** 1 | **Lane:** Normal
+
+- Add `src/sentinel.rs` module: `extract_block(&str) -> Result<Vec<String>, SentinelError>` extracts raw row lines between first `<!-- INBOX_APPEND_START -->` / `<!-- INBOX_APPEND_END -->` pair.
+- `SentinelError` enum (`MissingStartMarker` / `MissingEndMarker`) via `thiserror` 2.x derive.
+- Multiple START markers: use first pair, emit `eprintln!` warn (no fail) — intentional operational stderr (per Turn 1 O1.2).
+- Skip blank lines + HTML-comment lines (`<!-- ... -->`) inside block.
+- 6 inline unit tests (happy path / empty block / missing start / missing end / multiple pairs / comment-skip).
+- Register `mod sentinel;` in `src/main.rs`.
+- Update `docs/ARCHITECTURE.md` §5 scaffold status.
+- Doctrine sync (Turn 1 O1.1 ACCEPT): amend `CLAUDE.md` Tech Stack `Regex` entry + File Structure comment for `sentinel.rs` to reflect `str::find` implementation choice; `regex` crate remains declared for `inbox.rs`/pattern matching.
+
+Not yet wired into `cli/parse_report.rs` — that's P004.
+
+---
+
 ## 2026-05-28 — P002: row/state types (serde)
 
 ### Added
