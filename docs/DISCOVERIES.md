@@ -10,6 +10,7 @@
 - YYYY-MM-DD P<NNN>: <one-line summary>, <key finding> → see docs/discoveries/P<NNN>.md
 -->
 
+- 2026-05-28 P006: append wired (INV-LOCAL-002 atomic write first user), insert_rows signature adds path param for cleaner errors, ARCHITECTURE §7 flush→sync_all doc drift fixed, 41 tests total → see docs/discoveries/P006.md
 - 2026-05-28 P005: dedup wired (state + rows JSON → kept/skipped/observed_ids), state::read enforces schema_version==1, #![allow(dead_code)] removed from state.rs, anyhow downcast maps exit codes (StateReadError→1, else→2) → see docs/discoveries/P005.md
 - 2026-05-28 P004: parse-report wired (stdin/--input → sentinel → row → JSON), #![allow(dead_code)] removed from row.rs, anyhow downcast maps exit codes (SentinelError→1, other→2), clippy if_same_then_else collapsed → see docs/discoveries/P004.md
 - 2026-05-28 P003: sentinel.rs shipped (6 tests pass, str::find for literal markers), #![allow(dead_code)] per P002 pattern, eprintln! multiple-START warn is intentional operational stderr (DoD item 5 exempt) → see docs/discoveries/P003.md

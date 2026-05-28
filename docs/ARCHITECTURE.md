@@ -241,7 +241,8 @@ src/
 - P003: `sentinel.rs` (`extract_block` + `SentinelError`) shipped — pure logic, not yet wired into `cli/parse_report.rs`.
 - P004: `cli/parse_report.rs` wired (stdin/`--input` → sentinel → row → JSON stdout); `row::parse_row` + `RowParseError` + `FromStr` for `Status`/`Severity` shipped.
 - P005: `cli/dedup.rs` wired (state + rows JSON → kept/skipped/observed_ids JSON stdout); `state::read` + `StateReadError` (Io/Json/SchemaMismatch) shipped.
-- Pending Phase 1+ phiếu (see BACKLOG.md): `inbox.rs`, `mcp/`, `error.rs`.
+- P006: `cli/append.rs` wired; `inbox.rs` (`read_inbox` + `insert_rows` + `write_atomic` + `InboxError`) shipped — first concrete user of INV-LOCAL-002 atomic-write protocol. `impl Display for AdvisoryRow / Status / Severity` added to `row.rs`.
+- Pending Phase 1+ phiếu (see BACKLOG.md): `mcp/`, `error.rs`.
 
 ---
 
@@ -289,7 +290,7 @@ fn atomic_write(target: &Path, content: &[u8]) -> Result<()> {
     let parent = target.parent().context("no parent dir")?;
     let mut temp = NamedTempFile::new_in(parent)?;  // same filesystem → rename atomic
     temp.write_all(content)?;
-    temp.flush()?;
+    temp.as_file().sync_all()?;  // fsync data + metadata (per INV-LOCAL-002; stricter than flush)
     temp.persist(target)?;  // atomic rename
     Ok(())
 }

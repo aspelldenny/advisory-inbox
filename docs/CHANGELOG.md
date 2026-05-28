@@ -4,6 +4,26 @@
 
 ---
 
+## P006 — append subcmd atomic write (2026-05-28)
+
+**Type:** feat | **Tầng:** 1 | **Lane:** Guarded (filesystem write)
+
+- New module `src/inbox.rs` — `read_inbox`, `insert_rows`, `write_atomic` + `InboxError` enum (2 variants: `MissingRowsHeading` → exit 1, `Io` → exit 2). First concrete user of INV-LOCAL-002 atomic-write protocol; establishes reference shape for P007/P008/P009/P011.
+- `cli/append.rs` wired (stub → real impl): reads `{ "rows": [...] }` JSON envelope, reads inbox markdown, inserts rows after `## Rows` heading (rows[0] topmost), atomic-writes result, emits `{ "appended_count": N, "total_open": M }` to stdout.
+- `impl Display for AdvisoryRow / Status / Severity` added to `src/row.rs` — pipe-delim 8-col render per ARCHITECTURE §3. Status = lowercase, Severity = PascalCase (matches serde rename_all convention).
+- `src/main.rs`: added `mod inbox;`, updated `Commands::Append` dispatch arm with `InboxError` downcast + variant-aware exit code map (MissingRowsHeading → 1, Io → 2, other → 2).
+- New fixtures: `tests/fixtures/inbox-baseline.md` (2 rows: 1 open + 1 processed + HTML comment placeholder), `tests/fixtures/rows-2.json` (2 open rows).
+- New integration test `tests/append_cli.rs` (4 cases: happy path 2-new-rows / missing heading exit 1 / rows malformed exit 2 / atomic write no-leftover-tmp).
+- `docs/ARCHITECTURE.md` §5: mark P006 shipped, remove `inbox.rs` from Pending list.
+- `docs/security/INVARIANTS.md` §3 INV-LOCAL-002: added "First concrete user" + user-supplied path note.
+- `README.md`: added `append` quick-start section.
+- Test count: baseline 31 → post-P006 41 (30 unit + 11 integration).
+- Sub-mech B ✅, D ✅, E ✅, F ✅.
+
+home: docs/CHANGELOG.md (operational), docs/ARCHITECTURE.md §5 (durable scaffold reference)
+
+---
+
 ## P005 — dedup subcmd (2026-05-28)
 
 **Type:** feat | **Tầng:** 1 | **Lane:** Normal

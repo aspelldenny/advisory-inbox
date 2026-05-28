@@ -8,6 +8,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 mod cli;
+mod inbox;
 mod row;
 mod sentinel;
 mod state;
@@ -121,7 +122,21 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Commands::Append { inbox, rows_json } => cli::append::run(inbox, rows_json),
+        Commands::Append { inbox, rows_json } => {
+            if let Err(e) = cli::append::run(inbox, rows_json) {
+                let code = if let Some(ie) = e.downcast_ref::<crate::inbox::InboxError>() {
+                    match ie {
+                        crate::inbox::InboxError::MissingRowsHeading { .. } => 1,
+                        crate::inbox::InboxError::Io { .. } => 2,
+                    }
+                } else {
+                    2 // rows JSON malformed / unreadable / other serde err → exit 2
+                };
+                eprintln!("error: {:#}", e);
+                std::process::exit(code);
+            }
+            Ok(())
+        }
         Commands::MigrateState { state, dry_run } => cli::migrate_state::run(state, dry_run),
         Commands::StateBackfill {
             state,
