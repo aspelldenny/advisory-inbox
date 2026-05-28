@@ -42,11 +42,13 @@
       "args": [
         "serve"
       ]
-    },
-    "_advisory-inbox": {
-      "_comment": "ENABLED after P010 ship — uncomment + rename key to 'advisory-inbox'. Binary path: ~/.cargo/bin/advisory-inbox (after cargo install).",
-      "_command": "/Users/nguyenhuuanh/.cargo/bin/advisory-inbox",
-      "_args": ["serve"]
+    }
+  },
+  "_post_p010": {
+    "_comment": "After P010 ships MCP serve subcmd: cargo install --path . && add entry below to mcpServers:",
+    "_advisory-inbox_example": {
+      "command": "/Users/nguyenhuuanh/.cargo/bin/advisory-inbox",
+      "args": ["serve"]
     }
   }
 }
