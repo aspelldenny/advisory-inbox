@@ -21,5 +21,8 @@ Cargo.lock.bak
 /tmp-test-*
 /test-output-*
 
+# Pre-phiếu snapshots (Worker backup files, not committed)
+/.backup/
+
 # OS
 Thumbs.db
