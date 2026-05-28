@@ -218,6 +218,38 @@ Agent emits report with structured block:
 
 ## §5. Module Layout
 
+**Data flow (agent report → inbox + state update):**
+
+```
+              agent report (stdin or --report)
+                        │
+                        ▼
+                ┌─────────────┐
+                │  sentinel   │  extract <!-- INBOX_APPEND_START/END --> block
+                └──────┬──────┘
+                        ▼
+                ┌─────────────┐
+                │    row      │  parse pipe-delimited rows → AdvisoryRow[]
+                └──────┬──────┘
+                        ▼
+                ┌─────────────┐             ┌─────────────────────┐
+                │    dedup    │ ◄─ reads ── │ .advisory-scan-state│
+                │             │             │ seen_advisories[]   │
+                └──────┬──────┘             └─────────────────────┘
+                        ▼
+                ┌─────────────┐             ┌─────────────────────┐
+                │   append    │ ── writes ► │ advisory-inbox.md   │
+                │             │             │ ## Rows (atomic)    │
+                └──────┬──────┘             └─────────────────────┘
+                        ▼
+                ┌─────────────┐             ┌─────────────────────┐
+                │    state    │ ── writes ► │ .advisory-scan-state│
+                │   update    │             │ + last_scan_at       │
+                └─────────────┘             └─────────────────────┘
+```
+
+**Module tree:**
+
 ```
 src/
 ├── main.rs              # CLI entry — clap parse, dispatch to subcmd
@@ -242,19 +274,9 @@ src/
 
 Note: `src/mcp/transport.rs` not created — stdio wiring remains in `cli/serve.rs` (no separate transport module needed for single-transport server). `src/error.rs` not created — tools use `rmcp::ErrorData` directly; CLI subcmds use `anyhow` + per-module `thiserror` types.
 
-**Scaffold status (2026-05-28):**
-- P001: `main.rs` + `cli/` 8 stub files shipped.
-- P002: `row.rs` (`AdvisoryRow` + `Status` + `Severity` enums) + `state.rs` (`StateFile` + `SCHEMA_VERSION = 1`) shipped — types only, not yet wired into subcmd logic.
-- P003: `sentinel.rs` (`extract_block` + `SentinelError`) shipped — pure logic, not yet wired into `cli/parse_report.rs`.
-- P004: `cli/parse_report.rs` wired (stdin/`--input` → sentinel → row → JSON stdout); `row::parse_row` + `RowParseError` + `FromStr` for `Status`/`Severity` shipped.
-- P005: `cli/dedup.rs` wired (state + rows JSON → kept/skipped/observed_ids JSON stdout); `state::read` + `StateReadError` (Io/Json/SchemaMismatch) shipped.
-- P006: `cli/append.rs` wired; `inbox.rs` (`read_inbox` + `insert_rows` + `write_atomic` + `InboxError`) shipped — first concrete user of INV-LOCAL-002 atomic-write protocol. `impl Display for AdvisoryRow / Status / Severity` added to `row.rs`.
-- P007: `state.rs` gains `pub fn write_atomic` + `StateWriteError` (Io variant). `cli/migrate_state.rs` wired (file existence detect → JSON parse / legacy ISO parse / FormatUnknown). `MigrateError` enum (FormatUnknown + UnsupportedSchema) in `cli/migrate_state.rs`. Second concrete user of INV-LOCAL-002 (state-write path).
-- P008: `inbox.rs` gains `pub fn parse_rows(content: &str) -> Result<Vec<AdvisoryRow>, InboxError>` + `InboxError::ParseRow` variant (third variant, wraps `RowParseError`). `cli/state_backfill.rs` wired: extracts IDs from `processed`/`dismissed` rows, unions into `state.seen_advisories[]` via `BTreeSet`, atomically writes via `state::write_atomic` (third caller of INV-LOCAL-002). `--dry-run` byte-identity contract (Sub-mech F). Sub-mech C: `seen_advisories` monotonic non-shrink (BTreeSet union semantics). `last_scan_at` + `agent_version` PRESERVED (backfill is recovery, not scan event). `main.rs` `Commands::Append` match arm extended for `InboxError::ParseRow` (→ exit 1).
-- P009: `cli/scan_and_append.rs` wired — composite of sentinel → parse_row → state::read → dedup partition → inbox::insert_rows → inbox::write_atomic (FIRST) → state::write_atomic (SECOND). NO new lib module (reuses sentinel/row/state/inbox). `last_scan_at` UPDATED (scan event). Sub-mech C: `seen_advisories` monotonic non-shrink (BTreeSet union). Cross-file atomicity caveat documented (NOT transactional; inbox-first write order; recovery = `state-backfill`). `state::write_atomic` is fourth caller of INV-LOCAL-002. 5-family error→exit-code map in `main.rs` dispatch arm. 3 integration tests in `tests/scan_and_append_cli.rs`.
-- P010: `cli/serve.rs` wired with rmcp 1.7.0 MCP server (stdio JSON-RPC 2.0 handshake). `AdvisoryInboxServer` unit struct implementing `ServerHandler::get_info()` returning `Implementation::new("advisory-inbox", env!("CARGO_PKG_VERSION"))` + empty `ServerCapabilities`. Tokio `current_thread` runtime built inline in `serve::run()` (no `#[tokio::main]` in `main.rs` — P001-P009 sync-main contract preserved). NO `src/mcp/` module shipped — handshake-only fits in `cli/serve.rs` (~80 lines). P011 will add `src/mcp/{mod.rs, tools.rs}` when tool dispatch needs structure. `main.rs` `Commands::Serve` dispatch arm gains exit-code-5 mapping (MCP transport error class — first use of exit 5). 2 unit tests in `cli::serve::tests` (get_info metadata) + 1 integration test in `tests/serve_cli.rs` (spawn binary + `initialize` JSON-RPC round-trip). Binary size ~1.96 MB post-P010.
-- P011: `src/mcp/mod.rs` + `src/mcp/tools.rs` shipped — `AdvisoryInboxService` with 6 `#[tool]`-annotated methods registered via `#[tool_router]` + `#[tool_handler] impl ServerHandler`. Tools: `parse_report` / `dedup` / `append` / `migrate_state` / `state_backfill` / `scan_and_append`. Strategy A (inline lib calls) for 4 pure-logic tools; Strategy B (extracted `pub fn execute(...)` helper) for `append` + `scan_and_append`. `schemars = "1.0"` dep added + rmcp `macros` + `schemars` features enabled. `AdvisoryRow` / `Status` / `Severity` gain `JsonSchema` derive. `cli/serve.rs` updated: `AdvisoryInboxServer` unit struct replaced by `AdvisoryInboxService` import; serve runtime pipeline unchanged. `get_info()` hand-written in `#[tool_handler]` block using `env!("CARGO_PKG_NAME")` / `env!("CARGO_PKG_VERSION")` (rmcp's auto-generated `from_build_env()` reads rmcp's own crate name — manual override required). Import path correction: `Parameters` + `Json` at `rmcp::handler::server::wrapper`, NOT `router::tool`. 4 unit tests in `mcp::tools::tests` + 2 integration tests in `tests/mcp_tools_cli.rs`. 69 tests total. Binary size ~2.16 MB post-P011.
-- Pending Phase 3+ phiếu (see BACKLOG.md): release polish (P012), tarot install (P013).
+**Scaffold status (Phase 1-3 complete, 2026-05-28):** All modules shipped via P001-P011 (see `docs/CHANGELOG.md` for per-phiếu ship details; `docs/DISCOVERIES.md` index for findings). 69 tests pass. Binary size ~2.16 MB release.
+
+**Pending phiếu (see BACKLOG.md):** P012 (release polish — this phiếu), P013 (tarot install — replaces 142-line Bash heredoc).
 
 ---
 

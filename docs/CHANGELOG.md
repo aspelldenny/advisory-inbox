@@ -4,6 +4,43 @@
 
 ---
 
+## P012 — Release polish: README + ARCHITECTURE + cargo publish dry-run (2026-05-28)
+
+**Type:** chore | **Tầng:** 2 | **Lane:** Normal
+
+### Changed
+
+- `README.md` consolidated from 243 lines (per-phiếu accreted Quick Start sections) to 158 lines.
+  - Unified subcmd sections (1 example + brief note each); exit-code detail delegated to ARCHITECTURE §1.
+  - MCP section trimmed to essential `.mcp.json` config + 1 `tools/call` example + compact tools table.
+  - "Atomic write" callouts consolidated to single INV-LOCAL-002 note at top of CLI section.
+- `docs/ARCHITECTURE.md` §5 "Scaffold status" list (P001-P011 multi-line entries) consolidated to 1-line
+  summary "All Phase 1-3 modules shipped" + pointer to CHANGELOG/DISCOVERIES.
+- `docs/ARCHITECTURE.md` §5 gains ASCII flow diagram (agent report → sentinel → row → dedup → append → state).
+
+### Added
+
+- `Cargo.toml`: `rust-version = "1.85"` MSRV declaration (PROJECT.md §Tech Stack; informational, does not block publish).
+
+### Verified
+
+- `cargo publish --dry-run --allow-dirty` exits 0 — 116 files packaged, 1.3 MiB (414.8 KiB compressed); all metadata valid; no `path = "..."` deps; LICENSE + README bundled.
+- `cargo build --release` zero warnings (2.16 MB binary — P011 baseline preserved, no code change).
+- `cargo test --all` 69 tests pass (P011 baseline preserved — no test change in P012).
+- `cargo clippy --all-targets -- -D warnings` clean.
+- `cargo fmt --check` no diff.
+
+### Not changed
+
+- NO code change in `src/`. NO test change in `tests/`. NO state schema, inbox format, sentinel marker,
+  CLI subcmd shape, or MCP tool surface change.
+
+### Phase 4 next
+
+- P013: install `advisory-inbox` into tarot (replace 142-line Bash heredoc).
+
+---
+
 ## P011 — MCP tool dispatch: 6 tools via rmcp ToolRouter (2026-05-28)
 
 **Type:** feat | **Tầng:** 1 | **Lane:** Guarded

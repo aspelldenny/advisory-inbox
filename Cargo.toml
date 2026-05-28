@@ -8,6 +8,7 @@ repository = "https://github.com/aspelldenny/advisory-inbox"
 homepage = "https://github.com/aspelldenny/advisory-inbox"
 keywords = ["security", "advisory", "cve", "inbox", "claude-code"]
 categories = ["command-line-utilities", "development-tools"]
+rust-version = "1.85"
 readme = "README.md"
 
 [dependencies]

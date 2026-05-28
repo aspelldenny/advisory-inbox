@@ -1,204 +1,113 @@
 # advisory-inbox
 
-Rust binary for advisory inbox state machine — parse agent report, dedup, append, migrate state. Replaces 142-line Bash heredoc slash command. CLI + MCP dual mode.
+Rust CLI + MCP dual-mode binary for advisory inbox state machine. Parses agent scan reports,
+deduplicates against a JSON state file, appends new advisories to an inbox markdown, and updates
+state — all atomically. Replaces the 142-line Bash heredoc slash command. Runs as a standalone
+CLI or as an MCP (Model Context Protocol) server for Claude Code integration.
 
-## Quick Start
+## Install
 
 ```bash
-# Build
-cargo build --release
+cargo install advisory-inbox
+```
 
-# Show all 8 subcommands
+Dev build from source:
+
+```bash
+cargo build --release
 ./target/release/advisory-inbox --help
 ```
 
-### Parse an agent report
+## CLI subcommands
 
-Pipe an advisory-watch agent report to the binary; get JSON on stdout:
+Exit codes for all subcommands: `0` success, `1` input error, `2` processing/write error.
+See [docs/ARCHITECTURE.md §1](docs/ARCHITECTURE.md) for full exit-code table and flag reference.
+
+All state/inbox writes use temp+fsync+rename per INV-LOCAL-002 (atomic, crash-safe).
+
+### parse-report
+
+Parse the `<!-- INBOX_APPEND_START/END -->` sentinel block from an agent scan report.
 
 ```bash
-advisory-inbox parse-report < path/to/agent-report.md
-# → { "advisories_found": N, "rows": [...], "stack_scanned": {} }
-
-# Or read from a file:
-advisory-inbox parse-report --input path/to/agent-report.md
+advisory-inbox parse-report < agent-report.md
+# → {"advisories_found":2,"rows":[...],"stack_scanned":{}}
+advisory-inbox parse-report --input agent-report.md
 ```
 
-Exit codes:
+### dedup
 
-| Code | Meaning |
-|------|---------|
-| `0`  | Parsed N rows successfully (N may be 0 if block is empty) |
-| `1`  | Sentinel markers `<!-- INBOX_APPEND_START -->` / `<!-- INBOX_APPEND_END -->` missing |
-| `2`  | Row format invalid (bad date, unknown severity, wrong cell count) or I/O error |
-
-### Dedup against state
-
-Filter parsed rows against `seen_advisories[]` in a state file:
+Filter parsed rows against `seen_advisories[]` in a state file.
 
 ```bash
 advisory-inbox dedup --state .advisory-scan-state --rows-json rows.json
-# → { "kept": [...], "observed_ids": [...], "skipped": [...] }
+# → {"kept":[...],"skipped":[...],"observed_ids":[...]}
 ```
 
-- `kept` — rows whose `advisory_id` is NOT yet in state (new advisories).
-- `skipped` — rows whose `advisory_id` is already in state (re-observed).
-- `observed_ids` — every input row's `advisory_id` (downstream uses this to extend state).
+### append
 
-Exit codes:
-
-| Code | Meaning |
-|------|---------|
-| `0`  | Partition succeeded (any number of kept/skipped, including zero) |
-| `1`  | State file missing, malformed JSON, or `schema_version != 1` — run `advisory-inbox migrate-state` to upgrade |
-| `2`  | Rows JSON missing or malformed (expected envelope `{ "rows": [...] }`) |
-
-See `docs/ARCHITECTURE.md` §1 for full CLI surface and `docs/BACKLOG.md` for phiếu pipeline.
-
-### `advisory-inbox append`
-
-Insert filtered rows into the inbox markdown at the top of `## Rows`, atomic-write.
+Insert filtered rows into the inbox markdown after `## Rows` heading.
 
 ```bash
-advisory-inbox append --inbox <FILE> --rows-json <FILE>
+advisory-inbox append --inbox advisory-inbox.md --rows-json kept.json
+# → {"appended_count":2,"total_open":5}
 ```
 
-**Input:** `--inbox` markdown path, `--rows-json` JSON file with `{ "rows": [...] }` shape (e.g., output of `dedup`'s `kept` array re-wrapped).
+### migrate-state
 
-**Output (stdout):** `{ "appended_count": N, "total_open": M }`.
-
-**Exit codes:**
-
-| Code | Meaning |
-|------|---------|
-| 0    | Success |
-| 1    | Inbox missing `## Rows` heading |
-| 2    | Write error (rows JSON malformed, file unreadable, disk full, etc.) |
-
-**Atomic write:** uses temp+fsync+rename protocol per INV-LOCAL-002 — partial-write safe across crash/power-loss.
-
-### `migrate-state`
-
-Convert legacy single-line ISO-8601 state file to JSON v1 schema. Idempotent for files already in JSON v1.
+Convert a legacy single-line ISO-8601 state file to JSON v1 schema. Idempotent.
 
 ```bash
-advisory-inbox migrate-state --state <FILE> [--dry-run]
+advisory-inbox migrate-state --state .advisory-scan-state [--dry-run]
+# → {"from":"legacy","to":"json-v1","seen_count":0}
 ```
 
-**Behaviors:**
+### state-backfill
 
-- File missing — creates fresh JSON v1 (`last_scan_at = now`, empty `seen_advisories`).
-- File is JSON v1 already — idempotent re-write (normalises pretty-print format).
-- File is single-line ISO-8601 timestamp (legacy tarot format) — converts to JSON v1, preserves timestamp in `last_scan_at`.
-- File is anything else — exit 1 (format unknown).
-
-**Flags:**
-
-- `--dry-run` — print intended `{from, to, seen_count}` summary, but do NOT modify file on disk.
-
-**Output (stdout JSON):**
-
-```json
-{"from": "legacy", "to": "json-v1", "seen_count": 0}
-```
-
-**Exit codes:**
-
-| Code | Meaning |
-|------|---------|
-| `0`  | Success |
-| `1`  | Format unknown (file content not parseable as JSON v1 or single-line ISO-8601) |
-| `2`  | Write error (permission denied, disk full, etc.) |
-
-**Atomic write:** state file write uses temp+fsync+rename per INV-LOCAL-002 — crash-safe.
-
-### `state-backfill`
-
-Recovery path: extracts advisory IDs from `processed`/`dismissed` rows in the inbox markdown and unions them into `state.seen_advisories[]`. Use this when the state file was lost or corrupted but the inbox retains Sếp's review decisions.
+Recovery: extract advisory IDs from `processed`/`dismissed` inbox rows into state.
 
 ```bash
-advisory-inbox state-backfill --state <FILE> --inbox <FILE> [--dry-run]
+advisory-inbox state-backfill --state .advisory-scan-state --inbox advisory-inbox.md [--dry-run]
+# → {"backfilled_count":3,"total_seen_after":4}
 ```
 
-**Behavior:**
+### scan-and-append
 
-- Reads `processed` and `dismissed` rows from inbox markdown under the `## Rows` heading.
-- Unions extracted IDs with pre-existing `seen_advisories[]` (monotonic — never shrinks).
-- `open` rows are NOT backfilled (still pending review).
-- Preserves `last_scan_at` and `agent_version` — backfill is recovery, not a scan event.
-- Idempotent: re-running produces the same result (BTreeSet union, always re-writes for canonical sort).
-
-**Flags:**
-
-- `--dry-run` — print intended summary JSON, but do NOT modify state file on disk.
-
-**Output (stdout JSON):**
-
-```json
-{"backfilled_count": 3, "total_seen_after": 4}
-```
-
-**Exit codes:**
-
-| Code | Meaning |
-|------|---------|
-| `0`  | Success |
-| `1`  | Input file invalid (inbox unparseable or state unreadable/wrong schema) |
-| `2`  | Write error (permission denied, disk full, etc.) |
-
-**Atomic write:** state file write uses temp+fsync+rename per INV-LOCAL-002 — crash-safe.
-
-### `scan-and-append`
-
-Composite: parse agent report → dedup → append to inbox → update state — all in one command. Replaces the 142-line Bash heredoc pipeline.
+Composite: parse report → dedup → append to inbox → update state. One command.
 
 ```bash
 advisory-inbox scan-and-append \
-  --report path/to/agent-report.md \
-  --inbox path/to/advisory-inbox.md \
-  --state path/to/.advisory-scan-state
-
-# Or read report from stdin (omit --report):
-cat path/to/agent-report.md | advisory-inbox scan-and-append \
-  --inbox path/to/advisory-inbox.md \
-  --state path/to/.advisory-scan-state
+  --report agent-report.md \
+  --inbox advisory-inbox.md \
+  --state .advisory-scan-state
+# → {"appended":2,"skipped_dedup":1,"total_open":5}
 ```
 
-**Output (stdout JSON):**
+Also accepts report from stdin (omit `--report`).
 
-```json
-{"appended": 2, "skipped_dedup": 1, "total_open": 5}
+### init
+
+Generate template inbox markdown + empty state file at given paths.
+
+```bash
+advisory-inbox init --inbox-path advisory-inbox.md --state-path .advisory-scan-state
+# → {"inbox_created":"advisory-inbox.md","state_created":".advisory-scan-state"}
 ```
 
-- `appended` — new rows inserted into inbox (advisory IDs not yet in state).
-- `skipped_dedup` — rows whose `advisory_id` was already in `seen_advisories[]` (skipped).
-- `total_open` — count of `open` rows in the inbox after insertion.
+### serve
 
-**Exit codes:**
+Start MCP server on stdin/stdout (JSON-RPC 2.0). See [MCP server mode](#mcp-server-mode) below.
 
-| Code | Meaning |
-|------|---------|
-| `0`  | Success (including empty sentinel block — `appended: 0` is valid) |
-| `1`  | Input error: sentinel markers missing, state file unreadable/wrong schema, or inbox missing `## Rows` heading |
-| `2`  | Write error: row parse failure, I/O error on inbox or state write, disk full, etc. |
-
-**Atomicity caveat:** This composite writes TWO files (inbox markdown + state JSON) via separate atomic writes (INV-LOCAL-002 per file). The PAIR is NOT cross-file transactional. Write order is **inbox first, state second** — if state write fails after inbox write succeeded, run `advisory-inbox state-backfill` to reconcile.
-
-**State updates:**
-- `seen_advisories[]` — extended with all observed IDs (kept ∪ skipped). Monotonic, never shrinks.
-- `last_scan_at` — updated to current UTC time (scan event).
-- `agent_version` + `schema_version` — preserved unchanged.
-
-## MCP server mode
-
-`advisory-inbox` runs as an MCP (Model Context Protocol) server, exposing 6 structured tools
-to Claude Code and other MCP-capable AI assistants via JSON-RPC 2.0 over stdin/stdout.
-
-```sh
+```bash
 advisory-inbox serve
 ```
 
-Wire into your project's `.mcp.json` for Claude Code integration:
+## MCP server mode
+
+`advisory-inbox serve` speaks JSON-RPC 2.0 over stdin/stdout, exposing 6 tools to Claude Code
+and other MCP-capable clients.
+
+Wire into your project's `.mcp.json` for Claude Code:
 
 ```json
 {
@@ -211,33 +120,39 @@ Wire into your project's `.mcp.json` for Claude Code integration:
 }
 ```
 
-### Tools available
-
-| Tool | Description | Key inputs |
-|------|-------------|------------|
-| `parse_report` | Parse sentinel block from agent report | `report_text: string` |
-| `dedup` | Filter rows against seen_advisories | `state_path: string`, `rows: [...]` |
-| `append` | Insert rows into inbox markdown | `inbox_path: string`, `rows: [...]` |
-| `migrate_state` | Migrate legacy state to JSON v1 | `state_path: string`, `dry_run: bool` |
-| `state_backfill` | Extract IDs from inbox into state | `state_path: string`, `inbox_path: string` |
-| `scan_and_append` | Composite: parse → dedup → append → state update | `report_text`, `inbox_path`, `state_path` |
-
-### Example: call `parse_report` via JSON-RPC
+Example `tools/call` request:
 
 ```bash
-# Pipe JSON-RPC request to serve, read response:
 printf '%s\n%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"cli","version":"0.0.0"}}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"parse_report","arguments":{"report_text":"<!-- INBOX_APPEND_START -->\n| 2026-05-28 | CVE-2026-0001 | https://example.com | pkg@1 | f:1 | High | open | - |\n<!-- INBOX_APPEND_END -->"}}}' \
   | advisory-inbox serve
 ```
 
-Response shape:
-```json
-{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"{\"advisories_found\":1,\"rows\":[...],\"stack_scanned\":{}}"}]}}
+| Tool | Description |
+|------|-------------|
+| `parse_report` | Parse sentinel block from agent report |
+| `dedup` | Filter rows against seen_advisories |
+| `append` | Insert rows into inbox markdown |
+| `migrate_state` | Migrate legacy state to JSON v1 |
+| `state_backfill` | Extract IDs from inbox into state |
+| `scan_and_append` | Composite: parse → dedup → append → state update |
+
+See [docs/ARCHITECTURE.md §6](docs/ARCHITECTURE.md) for full tool input/output schemas.
+
+## Architecture
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for CLI surface, state schema, inbox format,
+sentinel marker spec, module layout, MCP surface, and atomic write pattern.
+
+## Development
+
+```bash
+cargo build --release
+cargo test --all
+cargo clippy --all-targets -- -D warnings
 ```
 
-Tool errors return JSON-RPC error with `code: -32000` and `data: { "subcmd": "<name>", "exit_code": N }`.
+## License
 
-Exit code 5 indicates MCP transport/runtime error. All other exit codes apply only to direct
-CLI subcommands (see Exit codes table in each subcmd section above).
+MIT — see [LICENSE](LICENSE).
