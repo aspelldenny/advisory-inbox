@@ -10,6 +10,7 @@
 - YYYY-MM-DD P<NNN>: <one-line summary>, <key finding> → see docs/discoveries/P<NNN>.md
 -->
 
+- 2026-05-28 P005: dedup wired (state + rows JSON → kept/skipped/observed_ids), state::read enforces schema_version==1, #![allow(dead_code)] removed from state.rs, anyhow downcast maps exit codes (StateReadError→1, else→2) → see docs/discoveries/P005.md
 - 2026-05-28 P004: parse-report wired (stdin/--input → sentinel → row → JSON), #![allow(dead_code)] removed from row.rs, anyhow downcast maps exit codes (SentinelError→1, other→2), clippy if_same_then_else collapsed → see docs/discoveries/P004.md
 - 2026-05-28 P003: sentinel.rs shipped (6 tests pass, str::find for literal markers), #![allow(dead_code)] per P002 pattern, eprintln! multiple-START warn is intentional operational stderr (DoD item 5 exempt) → see docs/discoveries/P003.md
 - 2026-05-28 P002: row.rs + state.rs scaffold types shipped (8 tests pass), dead_code lint on unused pub types requires #![allow(dead_code)] until P004+ wire-in → see docs/discoveries/P002.md

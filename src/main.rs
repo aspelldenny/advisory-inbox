@@ -109,7 +109,18 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Commands::Dedup { state, rows_json } => cli::dedup::run(state, rows_json),
+        Commands::Dedup { state, rows_json } => {
+            if let Err(e) = cli::dedup::run(state, rows_json) {
+                let code = if e.is::<crate::state::StateReadError>() {
+                    1
+                } else {
+                    2
+                };
+                eprintln!("error: {:#}", e);
+                std::process::exit(code);
+            }
+            Ok(())
+        }
         Commands::Append { inbox, rows_json } => cli::append::run(inbox, rows_json),
         Commands::MigrateState { state, dry_run } => cli::migrate_state::run(state, dry_run),
         Commands::StateBackfill {

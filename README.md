@@ -32,9 +32,25 @@ Exit codes:
 | `1`  | Sentinel markers `<!-- INBOX_APPEND_START -->` / `<!-- INBOX_APPEND_END -->` missing |
 | `2`  | Row format invalid (bad date, unknown severity, wrong cell count) or I/O error |
 
+### Dedup against state
+
+Filter parsed rows against `seen_advisories[]` in a state file:
+
 ```bash
-# Other subcommands (logic wired in P005-P011)
-./target/release/advisory-inbox dedup --state /tmp/s.json --rows-json /tmp/r.json
+advisory-inbox dedup --state .advisory-scan-state --rows-json rows.json
+# → { "kept": [...], "observed_ids": [...], "skipped": [...] }
 ```
+
+- `kept` — rows whose `advisory_id` is NOT yet in state (new advisories).
+- `skipped` — rows whose `advisory_id` is already in state (re-observed).
+- `observed_ids` — every input row's `advisory_id` (downstream uses this to extend state).
+
+Exit codes:
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Partition succeeded (any number of kept/skipped, including zero) |
+| `1`  | State file missing, malformed JSON, or `schema_version != 1` — run `advisory-inbox migrate-state` to upgrade |
+| `2`  | Rows JSON missing or malformed (expected envelope `{ "rows": [...] }`) |
 
 See `docs/ARCHITECTURE.md` §1 for full CLI surface and `docs/BACKLOG.md` for phiếu pipeline.
