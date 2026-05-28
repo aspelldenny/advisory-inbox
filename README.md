@@ -111,3 +111,39 @@ advisory-inbox migrate-state --state <FILE> [--dry-run]
 | `2`  | Write error (permission denied, disk full, etc.) |
 
 **Atomic write:** state file write uses temp+fsync+rename per INV-LOCAL-002 — crash-safe.
+
+### `state-backfill`
+
+Recovery path: extracts advisory IDs from `processed`/`dismissed` rows in the inbox markdown and unions them into `state.seen_advisories[]`. Use this when the state file was lost or corrupted but the inbox retains Sếp's review decisions.
+
+```bash
+advisory-inbox state-backfill --state <FILE> --inbox <FILE> [--dry-run]
+```
+
+**Behavior:**
+
+- Reads `processed` and `dismissed` rows from inbox markdown under the `## Rows` heading.
+- Unions extracted IDs with pre-existing `seen_advisories[]` (monotonic — never shrinks).
+- `open` rows are NOT backfilled (still pending review).
+- Preserves `last_scan_at` and `agent_version` — backfill is recovery, not a scan event.
+- Idempotent: re-running produces the same result (BTreeSet union, always re-writes for canonical sort).
+
+**Flags:**
+
+- `--dry-run` — print intended summary JSON, but do NOT modify state file on disk.
+
+**Output (stdout JSON):**
+
+```json
+{"backfilled_count": 3, "total_seen_after": 4}
+```
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Success |
+| `1`  | Input file invalid (inbox unparseable or state unreadable/wrong schema) |
+| `2`  | Write error (permission denied, disk full, etc.) |
+
+**Atomic write:** state file write uses temp+fsync+rename per INV-LOCAL-002 — crash-safe.

@@ -17,6 +17,7 @@ use crate::row::AdvisoryRow;
 /// Exit-code mapping (caller's responsibility in `main.rs`):
 /// - [`InboxError::MissingRowsHeading`] → exit code 1 (per ARCHITECTURE §1 append).
 /// - [`InboxError::Io`] → exit code 2.
+/// - [`InboxError::ParseRow`] → exit code 1 (per ARCHITECTURE §1 state-backfill).
 #[derive(Error, Debug)]
 pub enum InboxError {
     #[error("inbox `{path}` is missing `## Rows` heading — cannot determine insert position")]
@@ -26,6 +27,15 @@ pub enum InboxError {
         path: PathBuf,
         #[source]
         source: std::io::Error,
+    },
+    /// Row parse failure during `parse_rows`. `line_number` is 1-based line index
+    /// in the full inbox content (NOT relative to `## Rows` section start).
+    #[error("inbox `{path}` row parse failed at line {line_number}: {source}")]
+    ParseRow {
+        path: PathBuf,
+        line_number: usize,
+        #[source]
+        source: crate::row::RowParseError,
     },
 }
 
@@ -125,6 +135,86 @@ fn count_open_rows(content: &str) -> usize {
         }
     }
     count
+}
+
+/// Parse all rows under the `## Rows` heading from inbox markdown content.
+///
+/// Behavior:
+/// - Returns empty `Vec` if `## Rows` heading is absent (tolerate-empty per spec).
+/// - Skips blank lines, HTML-comment blocks (`<!-- ... -->`), column-header row
+///   (`| Date | Advisory ID | ... |`), and separator row (`|---...|`).
+/// - Stops at next `## ` heading after `## Rows` (preserves future schema extension).
+/// - Returns [`InboxError::ParseRow`] with `path: PathBuf::new()` placeholder on row
+///   parse failure — CALLER (e.g., `cli/state_backfill.rs`) MUST re-wrap with real
+///   path before bubbling to `main.rs`.
+///
+/// First consumer: P008 `state-backfill` subcmd.
+pub fn parse_rows(content: &str) -> Result<Vec<crate::row::AdvisoryRow>, InboxError> {
+    let lines: Vec<&str> = content.lines().collect();
+    let heading_idx = match lines.iter().position(|l| l.trim_end() == "## Rows") {
+        Some(idx) => idx,
+        None => return Ok(Vec::new()), // tolerate-empty per locked decision
+    };
+
+    let mut rows = Vec::new();
+    let mut in_comment = false;
+
+    for (offset, &line) in lines.iter().enumerate().skip(heading_idx + 1) {
+        let line_number = offset + 1; // 1-based line index in full content
+
+        // Stop at next `## ` or `# ` heading (start of new section).
+        let trimmed_start = line.trim_start();
+        if trimmed_start.starts_with("## ") || trimmed_start.starts_with("# ") {
+            break;
+        }
+
+        // HTML comment block toggle (multi-line or same-line open+close).
+        let starts_comment = line.contains("<!--");
+        let ends_comment = line.contains("-->");
+        if in_comment {
+            if ends_comment {
+                in_comment = false;
+            }
+            continue;
+        }
+        if starts_comment {
+            if !ends_comment {
+                in_comment = true;
+            }
+            // Both same-line open+close AND multi-line open: skip this line.
+            continue;
+        }
+
+        // Skip blank lines.
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // Skip separator row `|---...|`.
+        if trimmed.starts_with("|---") || trimmed.starts_with("| ---") {
+            continue;
+        }
+
+        // Skip column-header row `| Date | Advisory ID | ... |`.
+        if trimmed.starts_with("| Date |") || trimmed.starts_with("|Date|") {
+            continue;
+        }
+
+        // Treat as pipe-row; parse via `row::parse_row`.
+        match crate::row::parse_row(line) {
+            Ok(row) => rows.push(row),
+            Err(source) => {
+                return Err(InboxError::ParseRow {
+                    path: PathBuf::new(), // placeholder; caller fills with real path
+                    line_number,
+                    source,
+                });
+            }
+        }
+    }
+
+    Ok(rows)
 }
 
 /// Atomically write `content` to `path` per INV-LOCAL-002 protocol:
@@ -274,5 +364,87 @@ mod tests {
 -->\n";
         // Only CVE-A counted — the placeholder is inside the comment block.
         assert_eq!(count_open_rows(with_comment), 1);
+    }
+
+    // --- parse_rows tests (P008) ---
+
+    #[test]
+    fn parse_rows_happy_3_rows() {
+        let content = "# Inbox\n\
+## Rows\n\
+| Date | Advisory ID | Source URL | Package | File:Line | Severity | Status | Note |\n\
+|------|-------------|-----------|---------|-----------|----------|--------|------|\n\
+| 2026-05-28 | CVE-2026-1 | https://x.com/1 | pkg1@<1 | f.rs:1 | High | open | - |\n\
+| 2026-05-28 | CVE-2026-2 | https://x.com/2 | pkg2@<2 | f.rs:2 | Medium | processed | reviewed |\n\
+| 2026-05-28 | CVE-2026-3 | https://x.com/3 | pkg3@<3 | f.rs:3 | Low | dismissed | n/a |\n";
+        let rows = parse_rows(content).expect("parse rows");
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].advisory_id, "CVE-2026-1");
+        assert_eq!(rows[2].advisory_id, "CVE-2026-3");
+    }
+
+    #[test]
+    fn parse_rows_empty_section() {
+        // `## Rows` present but no data rows — only header + separator.
+        let content = "# Inbox\n\
+## Rows\n\
+\n\
+| Date | Advisory ID | Source URL | Package | File:Line | Severity | Status | Note |\n\
+|------|-------------|-----------|---------|-----------|----------|--------|------|\n";
+        let rows = parse_rows(content).expect("parse rows empty");
+        assert_eq!(rows.len(), 0);
+    }
+
+    #[test]
+    fn parse_rows_skips_html_comment() {
+        let content = "# Inbox\n\
+## Rows\n\
+| Date | Advisory ID | Source URL | Package | File:Line | Severity | Status | Note |\n\
+|------|-------------|-----------|---------|-----------|----------|--------|------|\n\
+| 2026-05-28 | CVE-2026-1 | https://x.com/1 | pkg1@<1 | f.rs:1 | High | open | - |\n\
+<!--\n\
+| 2026-05-23 | GHSA-skip | https://x.com/skip | pkg@<x | indirect | Medium | open | - |\n\
+-->\n\
+| 2026-05-28 | CVE-2026-2 | https://x.com/2 | pkg2@<2 | f.rs:2 | Medium | processed | reviewed |\n";
+        let rows = parse_rows(content).expect("parse rows with comment");
+        assert_eq!(rows.len(), 2, "comment block row must be skipped");
+        assert!(rows.iter().all(|r| r.advisory_id != "GHSA-skip"));
+    }
+
+    #[test]
+    fn parse_rows_bad_row_returns_parse_row_error() {
+        // 5 columns instead of 8 — row::parse_row should fail.
+        let content = "## Rows\n\
+| Date | Advisory ID | Source URL | Package | File:Line | Severity | Status | Note |\n\
+|------|-------------|-----------|---------|-----------|----------|--------|------|\n\
+| 2026-05-28 | CVE-2026-1 | bad-row-only-5-cols | High | open |\n";
+        let err = parse_rows(content).expect_err("should error on malformed row");
+        assert!(
+            matches!(err, InboxError::ParseRow { .. }),
+            "expected ParseRow variant, got {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn parse_rows_no_heading_returns_empty() {
+        // No `## Rows` heading — tolerate-empty per locked decision.
+        let content = "# Inbox\n\nNo rows section here.\n";
+        let rows = parse_rows(content).expect("tolerate missing heading");
+        assert_eq!(rows.len(), 0);
+    }
+
+    #[test]
+    fn parse_rows_stops_at_next_heading() {
+        // Content after next `## ` heading must NOT be parsed as rows.
+        let content = "## Rows\n\
+| 2026-05-28 | CVE-2026-1 | https://x.com/1 | pkg1@<1 | f.rs:1 | High | open | - |\n\
+| 2026-05-28 | CVE-2026-2 | https://x.com/2 | pkg2@<2 | f.rs:2 | Medium | processed | reviewed |\n\
+## Archive\n\
+| 2026-05-28 | CVE-2026-3 | https://x.com/3 | pkg3@<3 | f.rs:3 | Low | dismissed | n/a |\n";
+        let rows = parse_rows(content).expect("parse rows stops at heading");
+        // Only 2 rows before `## Archive`; CVE-2026-3 must NOT be included.
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|r| r.advisory_id != "CVE-2026-3"));
     }
 }
