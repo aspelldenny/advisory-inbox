@@ -250,7 +250,8 @@ pub fn write_atomic(path: &Path, content: &str) -> Result<(), InboxError> {
             path: path.to_path_buf(),
             source,
         })?;
-    temp.as_file().sync_all().map_err(|source| InboxError::Io {
+    // Flush buffered writes before rename.
+    temp.flush().map_err(|source| InboxError::Io {
         path: path.to_path_buf(),
         source,
     })?;

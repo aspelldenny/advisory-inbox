@@ -15,6 +15,12 @@ use rmcp::{ServiceExt, transport::io::stdio};
 use crate::mcp::tools::AdvisoryInboxService;
 
 pub fn run() -> Result<()> {
+    // Optional verbose flag from env (debug aid).
+    let verbose = std::env::var("ADVISORY_INBOX_VERBOSE").unwrap_or_default();
+    if !verbose.is_empty() {
+        eprintln!("[serve] verbose={verbose}");
+    }
+
     // Build current-thread runtime (Cargo.toml declares `rt` feature only — NO multi-thread).
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
