@@ -191,16 +191,14 @@ cat path/to/agent-report.md | advisory-inbox scan-and-append \
 
 ## MCP server mode
 
-`advisory-inbox` can also run as an MCP (Model Context Protocol) server, exposing its
-functionality to Claude Code and other MCP-capable AI assistants via JSON-RPC 2.0 over
-stdin/stdout.
+`advisory-inbox` runs as an MCP (Model Context Protocol) server, exposing 6 structured tools
+to Claude Code and other MCP-capable AI assistants via JSON-RPC 2.0 over stdin/stdout.
 
 ```sh
-# Direct invocation (handshake-only as of P010; tools come in P011):
 advisory-inbox serve
 ```
 
-Or wire into your project's `.mcp.json`:
+Wire into your project's `.mcp.json` for Claude Code integration:
 
 ```json
 {
@@ -213,9 +211,33 @@ Or wire into your project's `.mcp.json`:
 }
 ```
 
-The server responds to MCP `initialize` requests with server info (`name: "advisory-inbox"`,
-`version: <Cargo.toml>`). As of P010, no tools are registered — P011 will expose 6 tools
-(`parse_report`, `dedup`, `append`, `migrate_state`, `state_backfill`, `scan_and_append`).
+### Tools available
 
-Exit code 5 indicates MCP transport / runtime error. All other exit codes apply only to direct
+| Tool | Description | Key inputs |
+|------|-------------|------------|
+| `parse_report` | Parse sentinel block from agent report | `report_text: string` |
+| `dedup` | Filter rows against seen_advisories | `state_path: string`, `rows: [...]` |
+| `append` | Insert rows into inbox markdown | `inbox_path: string`, `rows: [...]` |
+| `migrate_state` | Migrate legacy state to JSON v1 | `state_path: string`, `dry_run: bool` |
+| `state_backfill` | Extract IDs from inbox into state | `state_path: string`, `inbox_path: string` |
+| `scan_and_append` | Composite: parse → dedup → append → state update | `report_text`, `inbox_path`, `state_path` |
+
+### Example: call `parse_report` via JSON-RPC
+
+```bash
+# Pipe JSON-RPC request to serve, read response:
+printf '%s\n%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"cli","version":"0.0.0"}}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"parse_report","arguments":{"report_text":"<!-- INBOX_APPEND_START -->\n| 2026-05-28 | CVE-2026-0001 | https://example.com | pkg@1 | f:1 | High | open | - |\n<!-- INBOX_APPEND_END -->"}}}' \
+  | advisory-inbox serve
+```
+
+Response shape:
+```json
+{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"{\"advisories_found\":1,\"rows\":[...],\"stack_scanned\":{}}"}]}}
+```
+
+Tool errors return JSON-RPC error with `code: -32000` and `data: { "subcmd": "<name>", "exit_code": N }`.
+
+Exit code 5 indicates MCP transport/runtime error. All other exit codes apply only to direct
 CLI subcommands (see Exit codes table in each subcmd section above).

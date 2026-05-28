@@ -4,6 +4,37 @@
 
 ---
 
+## P011 — MCP tool dispatch: 6 tools via rmcp ToolRouter (2026-05-28)
+
+**Type:** feat | **Tầng:** 1 | **Lane:** Guarded
+
+### Added
+
+- `src/mcp/mod.rs` — MCP module root (`pub mod tools`).
+- `src/mcp/tools.rs` — `AdvisoryInboxService` with 6 `#[tool]`-annotated methods registered via `#[tool_router]` + `#[tool_handler] impl ServerHandler`. Tools: `parse_report` / `dedup` / `append` / `migrate_state` / `state_backfill` / `scan_and_append`. Per-tool typed input/output structs deriving `Deserialize` + `Serialize` + `JsonSchema`.
+- `tests/mcp_tools_cli.rs` — 2 integration tests: `tools_list_returns_six_tools` (Sub-mech A trigger verification) + `tools_call_parse_report_round_trip` (JSON-RPC end-to-end shape assertion).
+- 4 unit tests in `mcp::tools::tests`: `parse_report_happy_path`, `parse_report_missing_sentinel_returns_error`, `dedup_with_mock_state_partitions_correctly`, `mcp_error_shape_matches_architecture_spec`.
+
+### Changed
+
+- `Cargo.toml`: `rmcp` features extended from `["server", "transport-io"]` to `["server", "transport-io", "macros", "schemars"]`. New dep: `schemars = "1.0"` (required for `JsonSchema` derive on tool I/O types + `rmcp schemars` feature).
+- `src/row.rs`: `AdvisoryRow`, `Status`, `Severity` gain `#[derive(JsonSchema)]` (additive — no behavior change, enables input-schema autogen in `tools/list` response).
+- `src/cli/serve.rs`: `AdvisoryInboxServer` unit struct replaced by `AdvisoryInboxService` from `crate::mcp::tools`. All 2 P010 unit tests in `cli::serve::tests` removed (covered by `mcp::tools::tests` in P011). Runtime + transport pipeline unchanged.
+- `src/cli/append.rs`: `pub fn execute(inbox_path: &Path, rows: &[AdvisoryRow]) -> Result<AppendResult>` extracted (Strategy B) — called by both `run()` (CLI) and `mcp::tools::append` (MCP). CLI public `run()` signature unchanged.
+- `src/cli/scan_and_append.rs`: `pub fn execute(report_text: &str, inbox_path: &Path, state_path: &Path) -> Result<ScanAndAppendResult>` extracted (Strategy B) — same reuse pattern. CLI public `run()` signature unchanged.
+- `src/main.rs`: `mod mcp;` added to mod cluster.
+
+### Architecture decisions (P011)
+
+- **Import path correction (mechanical O1.1):** `Parameters` + `Json` live at `rmcp::handler::server::wrapper`, NOT `rmcp::handler::server::router::tool`. `Json` also at top-level `rmcp::Json`. Used correct paths from rmcp 1.7.0 source.
+- **`get_info()` hand-written (mechanical O1.2):** `#[tool_router(server_handler)]` auto-generated `from_build_env()` reads rmcp's own crate name ("rmcp"), not ours. Used two-step pattern: `#[tool_router]` (generates `Self::tool_router()`) + `#[tool_handler] impl ServerHandler` with manual `get_info()` using `env!("CARGO_PKG_NAME")` / `env!("CARGO_PKG_VERSION")`.
+- Strategy A (inline lib calls) for `parse_report`, `dedup`, `migrate_state`, `state_backfill`.
+- Strategy B (extracted `execute()` helper) for `append`, `scan_and_append` — avoids duplicating composite file-IO + logic.
+- `state_backfill` tool does NOT expose `--dry-run` flag (MCP surface writes unconditionally — dry_run is a CLI-only diagnostic). Tầng 2 self-decided.
+- Binary size post-P011: ~2.16 MB (P010 ~1.96 MB; schemars/macros delta ~200 KB — well under 10 MB limit).
+
+---
+
 ## P010 — `serve` subcmd: rmcp stdio handshake (2026-05-28)
 
 **Type:** feat | **Tầng:** 1 | **Lane:** Guarded

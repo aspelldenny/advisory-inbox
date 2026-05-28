@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 mod cli;
 mod inbox;
+mod mcp;
 mod row;
 mod sentinel;
 mod state;

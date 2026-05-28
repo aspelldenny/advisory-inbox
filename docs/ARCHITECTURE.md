@@ -225,22 +225,22 @@ src/
 │   ├── mod.rs           # Subcmd registry
 │   ├── parse_report.rs
 │   ├── dedup.rs
-│   ├── append.rs
+│   ├── append.rs        # pub fn execute(...) helper for MCP reuse (P011)
 │   ├── migrate_state.rs
 │   ├── state_backfill.rs
-│   ├── scan_and_append.rs
+│   ├── scan_and_append.rs  # pub fn execute(...) helper for MCP reuse (P011)
 │   ├── init.rs
-│   └── serve.rs         # MCP server entry
+│   └── serve.rs         # MCP server entry (stdio transport stays here)
 ├── state.rs             # State file JSON read/write atomic
 ├── inbox.rs             # Inbox markdown parser + writer atomic
-├── row.rs               # AdvisoryRow struct + (de)serialize
+├── row.rs               # AdvisoryRow struct + (de)serialize + JsonSchema (P011)
 ├── sentinel.rs          # Sentinel marker regex + block extract
-├── mcp/
-│   ├── mod.rs           # MCP service definition
-│   ├── tools.rs         # 6 tools schema + handler
-│   └── transport.rs     # rmcp stdio wiring
-└── error.rs             # thiserror Error enum
+└── mcp/                 # MCP tool dispatch (P011)
+    ├── mod.rs           # Module root (pub mod tools)
+    └── tools.rs         # AdvisoryInboxService + 6 #[tool] methods
 ```
+
+Note: `src/mcp/transport.rs` not created — stdio wiring remains in `cli/serve.rs` (no separate transport module needed for single-transport server). `src/error.rs` not created — tools use `rmcp::ErrorData` directly; CLI subcmds use `anyhow` + per-module `thiserror` types.
 
 **Scaffold status (2026-05-28):**
 - P001: `main.rs` + `cli/` 8 stub files shipped.
@@ -253,7 +253,8 @@ src/
 - P008: `inbox.rs` gains `pub fn parse_rows(content: &str) -> Result<Vec<AdvisoryRow>, InboxError>` + `InboxError::ParseRow` variant (third variant, wraps `RowParseError`). `cli/state_backfill.rs` wired: extracts IDs from `processed`/`dismissed` rows, unions into `state.seen_advisories[]` via `BTreeSet`, atomically writes via `state::write_atomic` (third caller of INV-LOCAL-002). `--dry-run` byte-identity contract (Sub-mech F). Sub-mech C: `seen_advisories` monotonic non-shrink (BTreeSet union semantics). `last_scan_at` + `agent_version` PRESERVED (backfill is recovery, not scan event). `main.rs` `Commands::Append` match arm extended for `InboxError::ParseRow` (→ exit 1).
 - P009: `cli/scan_and_append.rs` wired — composite of sentinel → parse_row → state::read → dedup partition → inbox::insert_rows → inbox::write_atomic (FIRST) → state::write_atomic (SECOND). NO new lib module (reuses sentinel/row/state/inbox). `last_scan_at` UPDATED (scan event). Sub-mech C: `seen_advisories` monotonic non-shrink (BTreeSet union). Cross-file atomicity caveat documented (NOT transactional; inbox-first write order; recovery = `state-backfill`). `state::write_atomic` is fourth caller of INV-LOCAL-002. 5-family error→exit-code map in `main.rs` dispatch arm. 3 integration tests in `tests/scan_and_append_cli.rs`.
 - P010: `cli/serve.rs` wired with rmcp 1.7.0 MCP server (stdio JSON-RPC 2.0 handshake). `AdvisoryInboxServer` unit struct implementing `ServerHandler::get_info()` returning `Implementation::new("advisory-inbox", env!("CARGO_PKG_VERSION"))` + empty `ServerCapabilities`. Tokio `current_thread` runtime built inline in `serve::run()` (no `#[tokio::main]` in `main.rs` — P001-P009 sync-main contract preserved). NO `src/mcp/` module shipped — handshake-only fits in `cli/serve.rs` (~80 lines). P011 will add `src/mcp/{mod.rs, tools.rs}` when tool dispatch needs structure. `main.rs` `Commands::Serve` dispatch arm gains exit-code-5 mapping (MCP transport error class — first use of exit 5). 2 unit tests in `cli::serve::tests` (get_info metadata) + 1 integration test in `tests/serve_cli.rs` (spawn binary + `initialize` JSON-RPC round-trip). Binary size ~1.96 MB post-P010.
-- Pending Phase 3+ phiếu (see BACKLOG.md): `src/mcp/` module (P011), tool dispatch (P011).
+- P011: `src/mcp/mod.rs` + `src/mcp/tools.rs` shipped — `AdvisoryInboxService` with 6 `#[tool]`-annotated methods registered via `#[tool_router]` + `#[tool_handler] impl ServerHandler`. Tools: `parse_report` / `dedup` / `append` / `migrate_state` / `state_backfill` / `scan_and_append`. Strategy A (inline lib calls) for 4 pure-logic tools; Strategy B (extracted `pub fn execute(...)` helper) for `append` + `scan_and_append`. `schemars = "1.0"` dep added + rmcp `macros` + `schemars` features enabled. `AdvisoryRow` / `Status` / `Severity` gain `JsonSchema` derive. `cli/serve.rs` updated: `AdvisoryInboxServer` unit struct replaced by `AdvisoryInboxService` import; serve runtime pipeline unchanged. `get_info()` hand-written in `#[tool_handler]` block using `env!("CARGO_PKG_NAME")` / `env!("CARGO_PKG_VERSION")` (rmcp's auto-generated `from_build_env()` reads rmcp's own crate name — manual override required). Import path correction: `Parameters` + `Json` at `rmcp::handler::server::wrapper`, NOT `router::tool`. 4 unit tests in `mcp::tools::tests` + 2 integration tests in `tests/mcp_tools_cli.rs`. 69 tests total. Binary size ~2.16 MB post-P011.
+- Pending Phase 3+ phiếu (see BACKLOG.md): release polish (P012), tarot install (P013).
 
 ---
 
@@ -262,7 +263,7 @@ src/
 ### Status
 
 - **P010 (shipped 2026-05-28):** Handshake support — `initialize` JSON-RPC request → valid `InitializeResult` response with `serverInfo: { name: "advisory-inbox", version: <Cargo.toml> }` + empty `ServerCapabilities`. 0 tools registered. `tools/list` returns empty (`ServerHandler` default). Exit 5 on MCP transport error.
-- **P011 (planned):** 6 tools registered via `ToolRouter`. ServerCapabilities flips `.enable_tools()`. `src/mcp/` module introduced.
+- **P011 (shipped 2026-05-28):** 6 tools registered via rmcp `#[tool_router]` + `#[tool_handler]` macros (`macros` + `schemars` features enabled). `ServerCapabilities::enable_tools()` set. `src/mcp/{mod.rs, tools.rs}` introduced. `schemars = "1.0"` dep added. Input/output types derive `JsonSchema` for auto-generated inputSchema in `tools/list` response. `tools/list` returns 6 descriptors; `tools/call <name>` dispatches to handler and returns `result.content[].text` JSON. Error format: `{ code: -32000, message: ..., data: { subcmd: ..., exit_code: N } }`.
 
 ### Server info
 
