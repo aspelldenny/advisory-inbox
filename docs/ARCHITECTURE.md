@@ -235,7 +235,10 @@ src/
 └── error.rs             # thiserror Error enum
 ```
 
-**Scaffold status (2026-05-28, P001):** `main.rs` + `cli/` 8 stub files shipped. `state.rs`, `inbox.rs`, `row.rs`, `sentinel.rs`, `mcp/`, `error.rs` pending Phase 1+ phiếu (see BACKLOG.md).
+**Scaffold status (2026-05-28):**
+- P001: `main.rs` + `cli/` 8 stub files shipped.
+- P002: `row.rs` (`AdvisoryRow` + `Status` + `Severity` enums) + `state.rs` (`StateFile` + `SCHEMA_VERSION = 1`) shipped — types only, not yet wired into subcmd logic.
+- Pending Phase 1+ phiếu (see BACKLOG.md): `inbox.rs`, `sentinel.rs`, `mcp/`, `error.rs`.
 
 ---
 

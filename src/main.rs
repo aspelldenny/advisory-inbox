@@ -8,6 +8,8 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 mod cli;
+mod row;
+mod state;
 
 #[derive(Parser)]
 #[command(name = "advisory-inbox", version, about, long_about = None)]
