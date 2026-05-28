@@ -205,7 +205,14 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Commands::Serve => cli::serve::run(),
+        Commands::Serve => {
+            if let Err(e) = cli::serve::run() {
+                eprintln!("error: {:#}", e);
+                // MCP transport / runtime errors → exit 5 per ARCHITECTURE §1 exit-code table.
+                std::process::exit(5);
+            }
+            Ok(())
+        }
         Commands::Init {
             inbox_path,
             state_path,

@@ -252,11 +252,17 @@ src/
 - P007: `state.rs` gains `pub fn write_atomic` + `StateWriteError` (Io variant). `cli/migrate_state.rs` wired (file existence detect → JSON parse / legacy ISO parse / FormatUnknown). `MigrateError` enum (FormatUnknown + UnsupportedSchema) in `cli/migrate_state.rs`. Second concrete user of INV-LOCAL-002 (state-write path).
 - P008: `inbox.rs` gains `pub fn parse_rows(content: &str) -> Result<Vec<AdvisoryRow>, InboxError>` + `InboxError::ParseRow` variant (third variant, wraps `RowParseError`). `cli/state_backfill.rs` wired: extracts IDs from `processed`/`dismissed` rows, unions into `state.seen_advisories[]` via `BTreeSet`, atomically writes via `state::write_atomic` (third caller of INV-LOCAL-002). `--dry-run` byte-identity contract (Sub-mech F). Sub-mech C: `seen_advisories` monotonic non-shrink (BTreeSet union semantics). `last_scan_at` + `agent_version` PRESERVED (backfill is recovery, not scan event). `main.rs` `Commands::Append` match arm extended for `InboxError::ParseRow` (→ exit 1).
 - P009: `cli/scan_and_append.rs` wired — composite of sentinel → parse_row → state::read → dedup partition → inbox::insert_rows → inbox::write_atomic (FIRST) → state::write_atomic (SECOND). NO new lib module (reuses sentinel/row/state/inbox). `last_scan_at` UPDATED (scan event). Sub-mech C: `seen_advisories` monotonic non-shrink (BTreeSet union). Cross-file atomicity caveat documented (NOT transactional; inbox-first write order; recovery = `state-backfill`). `state::write_atomic` is fourth caller of INV-LOCAL-002. 5-family error→exit-code map in `main.rs` dispatch arm. 3 integration tests in `tests/scan_and_append_cli.rs`.
-- Pending Phase 1+ phiếu (see BACKLOG.md): `mcp/`, `error.rs`.
+- P010: `cli/serve.rs` wired with rmcp 1.7.0 MCP server (stdio JSON-RPC 2.0 handshake). `AdvisoryInboxServer` unit struct implementing `ServerHandler::get_info()` returning `Implementation::new("advisory-inbox", env!("CARGO_PKG_VERSION"))` + empty `ServerCapabilities`. Tokio `current_thread` runtime built inline in `serve::run()` (no `#[tokio::main]` in `main.rs` — P001-P009 sync-main contract preserved). NO `src/mcp/` module shipped — handshake-only fits in `cli/serve.rs` (~80 lines). P011 will add `src/mcp/{mod.rs, tools.rs}` when tool dispatch needs structure. `main.rs` `Commands::Serve` dispatch arm gains exit-code-5 mapping (MCP transport error class — first use of exit 5). 2 unit tests in `cli::serve::tests` (get_info metadata) + 1 integration test in `tests/serve_cli.rs` (spawn binary + `initialize` JSON-RPC round-trip). Binary size ~1.96 MB post-P010.
+- Pending Phase 3+ phiếu (see BACKLOG.md): `src/mcp/` module (P011), tool dispatch (P011).
 
 ---
 
 ## §6. MCP Surface
+
+### Status
+
+- **P010 (shipped 2026-05-28):** Handshake support — `initialize` JSON-RPC request → valid `InitializeResult` response with `serverInfo: { name: "advisory-inbox", version: <Cargo.toml> }` + empty `ServerCapabilities`. 0 tools registered. `tools/list` returns empty (`ServerHandler` default). Exit 5 on MCP transport error.
+- **P011 (planned):** 6 tools registered via `ToolRouter`. ServerCapabilities flips `.enable_tools()`. `src/mcp/` module introduced.
 
 ### Server info
 
