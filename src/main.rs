@@ -127,6 +127,7 @@ fn main() -> Result<()> {
                 let code = if let Some(ie) = e.downcast_ref::<crate::inbox::InboxError>() {
                     match ie {
                         crate::inbox::InboxError::MissingRowsHeading { .. } => 1,
+                        crate::inbox::InboxError::ParseRow { .. } => 1,
                         crate::inbox::InboxError::Io { .. } => 2,
                     }
                 } else {
@@ -161,7 +162,20 @@ fn main() -> Result<()> {
             state,
             inbox,
             dry_run,
-        } => cli::state_backfill::run(state, inbox, dry_run),
+        } => {
+            if let Err(e) = cli::state_backfill::run(state, inbox, dry_run) {
+                let code = if e.downcast_ref::<crate::inbox::InboxError>().is_some()
+                    || e.downcast_ref::<crate::state::StateReadError>().is_some()
+                {
+                    1 // input file invalid (inbox unparseable or state unreadable)
+                } else {
+                    2 // write failure or unexpected error → exit 2
+                };
+                eprintln!("error: {:#}", e);
+                std::process::exit(code);
+            }
+            Ok(())
+        }
         Commands::ScanAndAppend {
             report,
             inbox,

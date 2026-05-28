@@ -250,6 +250,7 @@ src/
 - P005: `cli/dedup.rs` wired (state + rows JSON → kept/skipped/observed_ids JSON stdout); `state::read` + `StateReadError` (Io/Json/SchemaMismatch) shipped.
 - P006: `cli/append.rs` wired; `inbox.rs` (`read_inbox` + `insert_rows` + `write_atomic` + `InboxError`) shipped — first concrete user of INV-LOCAL-002 atomic-write protocol. `impl Display for AdvisoryRow / Status / Severity` added to `row.rs`.
 - P007: `state.rs` gains `pub fn write_atomic` + `StateWriteError` (Io variant). `cli/migrate_state.rs` wired (file existence detect → JSON parse / legacy ISO parse / FormatUnknown). `MigrateError` enum (FormatUnknown + UnsupportedSchema) in `cli/migrate_state.rs`. Second concrete user of INV-LOCAL-002 (state-write path).
+- P008: `inbox.rs` gains `pub fn parse_rows(content: &str) -> Result<Vec<AdvisoryRow>, InboxError>` + `InboxError::ParseRow` variant (third variant, wraps `RowParseError`). `cli/state_backfill.rs` wired: extracts IDs from `processed`/`dismissed` rows, unions into `state.seen_advisories[]` via `BTreeSet`, atomically writes via `state::write_atomic` (third caller of INV-LOCAL-002). `--dry-run` byte-identity contract (Sub-mech F). Sub-mech C: `seen_advisories` monotonic non-shrink (BTreeSet union semantics). `last_scan_at` + `agent_version` PRESERVED (backfill is recovery, not scan event). `main.rs` `Commands::Append` match arm extended for `InboxError::ParseRow` (→ exit 1).
 - Pending Phase 1+ phiếu (see BACKLOG.md): `mcp/`, `error.rs`.
 
 ---

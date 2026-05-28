@@ -4,6 +4,31 @@
 
 ---
 
+## P008 — state-backfill subcmd (2026-05-28)
+
+**Type:** feat | **Tầng:** 1 | **Lane:** Guarded
+
+### Added
+
+- `inbox::parse_rows(content: &str) -> Result<Vec<AdvisoryRow>, InboxError>` — reads rows under `## Rows` heading, skips HTML comment blocks, header/separator rows, blank lines; stops at next `## ` heading. 6 unit tests (happy path, empty section, HTML comment skip, bad row error, no heading tolerate, stop-at-next-heading).
+- `InboxError::ParseRow { path, line_number, source: RowParseError }` — third variant of `InboxError` enum (after `MissingRowsHeading` + `Io`). Placeholder `PathBuf::new()` for `path` in `parse_rows`; caller (`cli/state_backfill`) re-wraps with real path.
+- `cli/state_backfill.rs` real impl: reads state + inbox → filters `processed`/`dismissed` rows → BTreeSet union → `state::write_atomic` (third caller of INV-LOCAL-002). Sub-mech C: `seen_advisories` monotonic non-shrink. `last_scan_at` + `agent_version` PRESERVED (backfill is recovery, not scan event). Output: `{ "backfilled_count": N, "total_seen_after": M }`. Exit 0/1/2 per ARCHITECTURE §1.
+- `--dry-run` flag: emits same JSON summary without touching state file (byte-identity contract verified by Test C).
+- `tests/fixtures/inbox-5rows-3processed.md` — 5-row test fixture (3 processed/dismissed, 2 open).
+- `tests/fixtures/state-1id.json` — state fixture with 1 pre-existing seen ID `CVE-2026-7777`.
+- `tests/state_backfill_cli.rs` — 4 integration tests: acceptance (5→4 IDs, Sub-mech C), already-backfilled (idempotent), dry-run byte-identity (Sub-mech F), open-rows excluded.
+
+### Changed
+
+- `main.rs` `Commands::Append` dispatch arm: extended exhaustive match on `InboxError` to add `ParseRow { .. } => 1` (compile required — enum gained 3rd variant).
+- `main.rs` `Commands::StateBackfill` dispatch arm: replaced stub passthrough with full error→exit-code map (`InboxError` || `StateReadError` → 1, else → 2).
+
+### Test counts
+
+Baseline 49 (post-P007) → post-P008 59 (39 unit + 20 integration).
+
+---
+
 ## P007 — migrate-state subcmd (2026-05-28)
 
 **Type:** feat | **Tầng:** 1 | **Lane:** Guarded

@@ -10,6 +10,7 @@
 - YYYY-MM-DD P<NNN>: <one-line summary>, <key finding> → see docs/discoveries/P<NNN>.md
 -->
 
+- 2026-05-28 P008: state-backfill wired (INV-LOCAL-002 third user — state::write_atomic), inbox::parse_rows added + InboxError::ParseRow variant, 4 IDs union from fixture (Sub-mech C pass), dry-run byte-identity verified (Sub-mech F), 59 tests total → see docs/discoveries/P008.md
 - 2026-05-28 P007: migrate-state wired (INV-LOCAL-002 second user — state::write_atomic), legacy ISO→JSON v1 with timestamp preserved (Sub-mech C), 2 mechanical deviations (predicates trait import + clippy io_other_error), 49 tests total → see docs/discoveries/P007.md
 - 2026-05-28 P006: append wired (INV-LOCAL-002 atomic write first user), insert_rows signature adds path param for cleaner errors, ARCHITECTURE §7 flush→sync_all doc drift fixed, 41 tests total → see docs/discoveries/P006.md
 - 2026-05-28 P005: dedup wired (state + rows JSON → kept/skipped/observed_ids), state::read enforces schema_version==1, #![allow(dead_code)] removed from state.rs, anyhow downcast maps exit codes (StateReadError→1, else→2) → see docs/discoveries/P005.md
