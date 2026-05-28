@@ -61,6 +61,74 @@ pub enum StateReadError {
     },
 }
 
+/// Errors raised by atomic state-file write.
+///
+/// Exit-code mapping (caller's responsibility in `main.rs`):
+/// - [`StateWriteError::Io`] → exit code 2 (per ARCHITECTURE §1 migrate-state).
+#[derive(thiserror::Error, Debug)]
+pub enum StateWriteError {
+    /// File could not be written or the path has no parent directory.
+    #[error("state file `{path}` I/O failure: {source}")]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+/// Atomically write `state` to `path` per INV-LOCAL-002 protocol:
+/// temp file in SAME parent directory → fsync data+metadata → atomic rename.
+///
+/// Output is `serde_json::to_string_pretty` (2-space indent) with trailing newline.
+///
+/// This is the SECOND concrete user of INV-LOCAL-002 (after `inbox::write_atomic`
+/// shipped in P006). Reference shape matches `src/inbox.rs::write_atomic` exactly.
+pub fn write_atomic(path: &Path, state: &StateFile) -> Result<(), StateWriteError> {
+    use std::io::Write as _;
+    use tempfile::NamedTempFile;
+
+    let parent = path.parent().ok_or_else(|| StateWriteError::Io {
+        path: path.to_path_buf(),
+        source: std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "target path has no parent directory",
+        ),
+    })?;
+
+    // Serialize. `serde_json::to_string_pretty` failures map to Io for MVP
+    // (StateFile has no custom #[serde(serialize_with)] hooks; serialize is
+    // infallible for our shape). If a real serialize failure occurs in the future,
+    // add a `Json` variant to StateWriteError as a Tầng 2 self-decide.
+    let mut serialized =
+        serde_json::to_string_pretty(state).map_err(|source| StateWriteError::Io {
+            path: path.to_path_buf(),
+            source: std::io::Error::other(source.to_string()),
+        })?;
+    // Append trailing newline — matches ARCHITECTURE §2 fixture convention.
+    serialized.push('\n');
+
+    let mut temp = NamedTempFile::new_in(parent).map_err(|source| StateWriteError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    temp.write_all(serialized.as_bytes())
+        .map_err(|source| StateWriteError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    temp.as_file()
+        .sync_all()
+        .map_err(|source| StateWriteError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    temp.persist(path).map_err(|e| StateWriteError::Io {
+        path: path.to_path_buf(),
+        source: e.error,
+    })?;
+    Ok(())
+}
+
 /// Read + validate a state file from disk.
 ///
 /// Returns [`StateReadError::Io`] if the file is missing/unreadable,
@@ -212,5 +280,72 @@ mod tests {
         let f = write_tempfile(json);
         let err = read(f.path()).unwrap_err();
         assert!(matches!(err, StateReadError::Json { .. }));
+    }
+
+    // --- write_atomic() unit tests (P007) ---
+
+    #[test]
+    fn write_atomic_round_trip() {
+        use chrono::TimeZone as _;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("state.json");
+        let original = StateFile {
+            schema_version: 1,
+            last_scan_at: chrono::Utc
+                .with_ymd_and_hms(2026, 5, 28, 9, 51, 35)
+                .unwrap(),
+            seen_advisories: vec!["CVE-2026-1".to_string(), "CVE-2026-2".to_string()],
+            agent_version: "test@1.0".to_string(),
+        };
+        write_atomic(&target, &original).expect("write atomic");
+        let read_back = read(&target).expect("read back");
+        assert_eq!(read_back.schema_version, original.schema_version);
+        assert_eq!(read_back.last_scan_at, original.last_scan_at);
+        assert_eq!(read_back.seen_advisories, original.seen_advisories);
+        assert_eq!(read_back.agent_version, original.agent_version);
+    }
+
+    #[test]
+    fn write_atomic_trailing_newline() {
+        use chrono::TimeZone as _;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("state.json");
+        let state = StateFile {
+            schema_version: 1,
+            last_scan_at: chrono::Utc.with_ymd_and_hms(2026, 5, 28, 0, 0, 0).unwrap(),
+            seen_advisories: vec![],
+            agent_version: String::new(),
+        };
+        write_atomic(&target, &state).expect("write atomic");
+        let bytes = std::fs::read(&target).expect("read raw bytes");
+        assert_eq!(
+            bytes.last().copied(),
+            Some(b'\n'),
+            "output should end with newline"
+        );
+    }
+
+    #[test]
+    fn write_atomic_no_parent_errors() {
+        use chrono::TimeZone as _;
+        // Path::new("just-a-filename") has parent = Some("") on most platforms.
+        // NamedTempFile::new_in("") may succeed (treats "" as CWD). Either outcome
+        // is acceptable; this test documents the behavior. If it succeeds, clean up.
+        let state = StateFile {
+            schema_version: 1,
+            last_scan_at: chrono::Utc.with_ymd_and_hms(2026, 5, 28, 0, 0, 0).unwrap(),
+            seen_advisories: vec![],
+            agent_version: String::new(),
+        };
+        let bad_path = std::path::Path::new("just-a-filename-no-parent");
+        match write_atomic(bad_path, &state) {
+            Ok(()) => {
+                // Succeeded (temp created in CWD). Clean up to keep workspace tidy.
+                let _ = std::fs::remove_file(bad_path);
+            }
+            Err(StateWriteError::Io { .. }) => {
+                // Expected on platforms where parent("") → Io error.
+            }
+        }
     }
 }

@@ -137,7 +137,26 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Commands::MigrateState { state, dry_run } => cli::migrate_state::run(state, dry_run),
+        Commands::MigrateState { state, dry_run } => {
+            if let Err(e) = cli::migrate_state::run(state, dry_run) {
+                let code = if e
+                    .downcast_ref::<cli::migrate_state::MigrateError>()
+                    .is_some()
+                {
+                    // FormatUnknown or UnsupportedSchema → exit 1.
+                    1
+                } else if e.downcast_ref::<crate::state::StateWriteError>().is_some() {
+                    // Io write failure → exit 2.
+                    2
+                } else {
+                    // Unexpected error category → exit 2 (write/IO bucket).
+                    2
+                };
+                eprintln!("error: {:#}", e);
+                std::process::exit(code);
+            }
+            Ok(())
+        }
         Commands::StateBackfill {
             state,
             inbox,

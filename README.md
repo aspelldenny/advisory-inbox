@@ -76,3 +76,38 @@ advisory-inbox append --inbox <FILE> --rows-json <FILE>
 | 2    | Write error (rows JSON malformed, file unreadable, disk full, etc.) |
 
 **Atomic write:** uses temp+fsync+rename protocol per INV-LOCAL-002 — partial-write safe across crash/power-loss.
+
+### `migrate-state`
+
+Convert legacy single-line ISO-8601 state file to JSON v1 schema. Idempotent for files already in JSON v1.
+
+```bash
+advisory-inbox migrate-state --state <FILE> [--dry-run]
+```
+
+**Behaviors:**
+
+- File missing — creates fresh JSON v1 (`last_scan_at = now`, empty `seen_advisories`).
+- File is JSON v1 already — idempotent re-write (normalises pretty-print format).
+- File is single-line ISO-8601 timestamp (legacy tarot format) — converts to JSON v1, preserves timestamp in `last_scan_at`.
+- File is anything else — exit 1 (format unknown).
+
+**Flags:**
+
+- `--dry-run` — print intended `{from, to, seen_count}` summary, but do NOT modify file on disk.
+
+**Output (stdout JSON):**
+
+```json
+{"from": "legacy", "to": "json-v1", "seen_count": 0}
+```
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Success |
+| `1`  | Format unknown (file content not parseable as JSON v1 or single-line ISO-8601) |
+| `2`  | Write error (permission denied, disk full, etc.) |
+
+**Atomic write:** state file write uses temp+fsync+rename per INV-LOCAL-002 — crash-safe.
