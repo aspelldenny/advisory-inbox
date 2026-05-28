@@ -95,7 +95,20 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::ParseReport { input } => cli::parse_report::run(input),
+        Commands::ParseReport { input } => {
+            if let Err(e) = cli::parse_report::run(input) {
+                // SentinelError (missing markers) → exit 1.
+                // RowParseError, IO errors, and all other failures → exit 2.
+                let code = if e.is::<crate::sentinel::SentinelError>() {
+                    1
+                } else {
+                    2
+                };
+                eprintln!("error: {:#}", e);
+                std::process::exit(code);
+            }
+            Ok(())
+        }
         Commands::Dedup { state, rows_json } => cli::dedup::run(state, rows_json),
         Commands::Append { inbox, rows_json } => cli::append::run(inbox, rows_json),
         Commands::MigrateState { state, dry_run } => cli::migrate_state::run(state, dry_run),
