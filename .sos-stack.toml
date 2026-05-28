@@ -1,0 +1,15 @@
+# .sos-stack.toml — advisory-inbox stack manifest
+# Consumed by advisory-watch (trinh sát) + boundary-check (giám sát) subagents.
+# Source: ~/sos-kit/docs/WORKFLOW_V2.1.md (pilot test bed).
+
+schema_version = 1
+detected_at = "2026-05-28T01:55:00Z"
+sos_kit_version = "v2.1.0-pilot"
+
+# Rust single-stack
+[[stack]]
+type = "rust"
+manifest = "Cargo.toml"
+lock_file = "Cargo.lock"
+lock_format = "cargo-lock"
+parser = ""  # stub — cargo-lock parser deferred per advisory-watch handbook

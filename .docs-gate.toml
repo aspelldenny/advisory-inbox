@@ -1,0 +1,31 @@
+# docs-gate config for advisory-inbox
+# Schema: flat-string v0.1.0
+# Consumed by `docs-gate` MCP server (via .mcp.json) + CLI (`docs-gate --all`).
+
+docs_dir = "docs"
+
+# Changelog at docs/CHANGELOG.md — path relative to docs_dir.
+changelog = "CHANGELOG.md"
+changelog_max_age_days = 1
+changelog_staged = true
+
+# Extension hooks empty until Phase 1 ships first phiếu.
+rules = []
+staleness = []
+doc_structure = []
+count_check = []
+cross_doc = []
+
+[architecture]
+# Disabled at bootstrap — Phase 1 lands CLI surface + state/inbox/sentinel modules inline.
+# Re-enable once first Phase 1 phiếu ships (P004 parse-report or later — when ARCHITECTURE.md
+# is filled to match docs-gate's expected section shape, or tune required_sections below).
+enabled = false
+file = "docs/ARCHITECTURE.md"
+required_sections = 0
+required_non_empty = []
+
+[ticket]
+ticket_dir = "ticket"
+type_pattern = "Loại:"
+valid_types = ["Feature", "Bugfix", "Hotfix", "chore", "docs", "infra"]

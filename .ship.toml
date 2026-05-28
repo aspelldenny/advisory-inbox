@@ -1,0 +1,24 @@
+name = "advisory-inbox"
+stack = "rust"
+base_branch = "main"
+
+[test]
+command = "cargo test"
+timeout_secs = 300
+
+[docs_gate]
+enabled = true
+blocking = false
+
+[version]
+# file = "VERSION"
+strategy = "auto"
+
+[changelog]
+file = "docs/CHANGELOG.md"
+style = "grouped"
+
+[pr]
+template = "default"
+draft = false
+# labels = ["ship"]
