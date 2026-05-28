@@ -149,6 +149,13 @@ advisory-inbox init [--inbox-path <PATH>] [--state-path <PATH>]
 
 Single-line ISO-8601 (no JSON): `2026-05-23T12:00:00Z\n`. Migrate-state subcmd detects + converts.
 
+### State write path (post-P007)
+
+`src/state.rs` exports `pub fn write_atomic(path: &Path, state: &StateFile) -> Result<(), StateWriteError>`
+per INV-LOCAL-002 atomic-write protocol. Output format: `serde_json::to_string_pretty`
+(2-space indent) with trailing newline. Second concrete user of INV-LOCAL-002 (first:
+`src/inbox.rs::write_atomic` from P006). `StateWriteError` has one variant (`Io`) → exit code 2.
+
 ---
 
 ## §3. Inbox Markdown Format
@@ -242,6 +249,7 @@ src/
 - P004: `cli/parse_report.rs` wired (stdin/`--input` → sentinel → row → JSON stdout); `row::parse_row` + `RowParseError` + `FromStr` for `Status`/`Severity` shipped.
 - P005: `cli/dedup.rs` wired (state + rows JSON → kept/skipped/observed_ids JSON stdout); `state::read` + `StateReadError` (Io/Json/SchemaMismatch) shipped.
 - P006: `cli/append.rs` wired; `inbox.rs` (`read_inbox` + `insert_rows` + `write_atomic` + `InboxError`) shipped — first concrete user of INV-LOCAL-002 atomic-write protocol. `impl Display for AdvisoryRow / Status / Severity` added to `row.rs`.
+- P007: `state.rs` gains `pub fn write_atomic` + `StateWriteError` (Io variant). `cli/migrate_state.rs` wired (file existence detect → JSON parse / legacy ISO parse / FormatUnknown). `MigrateError` enum (FormatUnknown + UnsupportedSchema) in `cli/migrate_state.rs`. Second concrete user of INV-LOCAL-002 (state-write path).
 - Pending Phase 1+ phiếu (see BACKLOG.md): `mcp/`, `error.rs`.
 
 ---

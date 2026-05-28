@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "last_scan_at": "2026-05-28T09:51:35Z",
+  "seen_advisories": [
+    "CVE-2026-9256",
+    "GHSA-xxxx-yyyy"
+  ],
+  "agent_version": "advisory-watch@0.1.0"
+}

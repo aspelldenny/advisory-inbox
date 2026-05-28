@@ -114,7 +114,11 @@ temp.persist(target)?;  // atomic rename
 
 **Status:** Active. Inherits INV-21 of advisory-cron pattern.
 
-**First concrete user:** `src/inbox.rs::write_atomic` (P006, shipped 2026-05-28). Reference shape — future state-write subcmds (P007 migrate-state, P008 state-backfill, P009 scan-and-append, P011 MCP `append` tool) MUST follow same protocol.
+**Concrete users:**
+- P006 — `src/inbox.rs::write_atomic` (inbox markdown write path, shipped 2026-05-28). Reference shape established.
+- P007 — `src/state.rs::write_atomic` (state JSON write path, shipped 2026-05-28). Reference shape mirrored exactly from P006.
+
+Future state-write subcmds (P008 state-backfill, P009 scan-and-append, P011 MCP `append` tool) MUST follow same protocol.
 
 **Note on user-supplied path:** `--inbox <FILE>` argument is user-controlled. Worker / Sếp PHẢI ensure path points to intended inbox markdown file (typo could write to wrong file). Atomic protocol ensures partial-write safety; it does NOT validate semantic intent. No file-content echoing into stderr/log (Sub-mech F clean).
 

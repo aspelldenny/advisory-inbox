@@ -4,6 +4,58 @@
 
 ---
 
+## P007 — migrate-state subcmd (2026-05-28)
+
+**Type:** feat | **Tầng:** 1 | **Lane:** Guarded
+
+### Added
+
+- `state::write_atomic(path, &StateFile)` — second concrete user of INV-LOCAL-002 atomic-write protocol (after P006 inbox). 3 unit tests (round-trip, trailing newline, no-parent edge case).
+- `state::StateWriteError` enum (Io variant) — exit code 2 contract per ARCHITECTURE §1.
+- `cli/migrate_state.rs` real impl: detects missing / JSON v1 / legacy single-line ISO / garbage; preserves `last_scan_at` across legacy → JSON v1 conversion; `--dry-run` flag NEVER touches file.
+- `cli/migrate_state::MigrateError` enum: `FormatUnknown` + `UnsupportedSchema` (both → exit 1).
+- `Commands::MigrateState` main.rs dispatch arm: `MigrateError` → exit 1, `StateWriteError::Io` → exit 2.
+- 5 new integration tests (`tests/migrate_state_cli.rs`): missing / legacy / json-v1 / garbage / dry-run.
+- 3 new fixtures: `tests/fixtures/state-legacy.txt`, `state-json-v1.json`, `state-garbage.txt`.
+
+### Migration note
+
+Existing tarot users with legacy single-line ISO-8601 state files can now run:
+
+```
+advisory-inbox migrate-state --state ~/.advisory-scan-state
+```
+
+to convert in-place to JSON v1 schema. `last_scan_at` value preserved. `seen_advisories` initialized empty (legacy format had no IDs — this is expected, not data loss).
+
+Run with `--dry-run` first to preview:
+
+```
+advisory-inbox migrate-state --state ~/.advisory-scan-state --dry-run
+```
+
+### Changed
+
+- `Commands::MigrateState` main.rs dispatch arm now error-maps `MigrateError` → exit 1, `StateWriteError::Io` → exit 2 (previously flat stub passthrough from P001).
+- `docs/ARCHITECTURE.md` §2 — added "State write path (post-P007)" subsection.
+- `docs/ARCHITECTURE.md` §5 — P007 scaffold-status entry added.
+- `docs/security/INVARIANTS.md` — INV-LOCAL-002 P007 second concrete user note appended.
+- `README.md` — `migrate-state` quick-start section added.
+
+### Sub-mech checks
+
+- B (cargo check + cargo test state + cargo test --test migrate_state_cli): ✅
+- C (migration completeness — last_scan_at preserved in Test B): ✅
+- D (persistence — ARCHITECTURE §2/§5/§7 + INVARIANTS + CHANGELOG + README updated): ✅
+- E (env drift — cargo update --dry-run clean, release build clean): ✅
+- F (no token leak — grep clean across new code): ✅
+
+Test count: baseline 41 → post-P007 49 (33 unit + 16 integration).
+
+home: docs/CHANGELOG.md (operational), docs/ARCHITECTURE.md §5 (durable scaffold reference)
+
+---
+
 ## P006 — append subcmd atomic write (2026-05-28)
 
 **Type:** feat | **Tầng:** 1 | **Lane:** Guarded (filesystem write)
