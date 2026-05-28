@@ -4,6 +4,22 @@
 
 ---
 
+## P004 — parse-report subcmd (2026-05-28)
+
+**Type:** feat | **Tầng:** 1 | **Lane:** Normal
+
+- Wire `src/cli/parse_report.rs` — `run(Option<PathBuf>) -> anyhow::Result<()>` reads stdin or `--input <FILE>`, calls `sentinel::extract_block` then `row::parse_row` per line, emits JSON `{ "rows": [...], "stack_scanned": {}, "advisories_found": N }` to stdout.
+- Extend `src/row.rs`: add `pub fn parse_row(&str) -> Result<AdvisoryRow, RowParseError>` (pipe-split + per-cell decode), `pub enum RowParseError` (5 variants via `thiserror`), `impl FromStr for Status` + `impl FromStr for Severity`.
+- Remove `#![allow(dead_code)]` from `src/row.rs` (consumer wire-in complete per P002 Discovery follow-up). `src/state.rs` keeps the attribute until P005 dedup wire-in.
+- `src/main.rs`: dispatch `Commands::ParseReport { input }` maps `SentinelError` → exit 1, all other errors → exit 2; `anyhow` cause chain printed to stderr.
+- New fixture `tests/fixtures/agent-report-1.md` (2 rows).
+- New integration test `tests/parse_report_cli.rs` (3 cases: happy path, missing sentinel → exit 1, bad severity → exit 2).
+- `stack_scanned` placeholder `{}` per BACKLOG MVP scope — future phiếu may parse `**Stack scanned:**` section.
+
+home: docs/CHANGELOG.md (operational), docs/ARCHITECTURE.md §5 (durable scaffold reference)
+
+---
+
 ## P003 — Sentinel parser (2026-05-28)
 
 **Type:** feat | **Tầng:** 1 | **Lane:** Normal

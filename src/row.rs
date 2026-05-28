@@ -3,12 +3,11 @@
 //! Serialized as JSON between subcommands (parse-report → dedup → append).
 //! Status/Severity enums lock the wire format per upstream advisory convention.
 
-// Types are scaffold-declared for P003+ consumers. Allow dead_code until
-// subcmd wire-in phiếu (P004+) imports them.
-#![allow(dead_code)]
+use std::str::FromStr;
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// Status of an advisory row — Sếp gates `open` → `processed`/`dismissed`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +50,94 @@ pub struct AdvisoryRow {
     pub status: Status,
     /// Free-form note (`-` placeholder when empty).
     pub note: String,
+}
+
+/// Errors returned by [`parse_row`] when an inbox row line cannot be decoded.
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum RowParseError {
+    #[error("empty row line")]
+    EmptyLine,
+    #[error("expected {expected} cells, got {actual}")]
+    WrongCellCount { expected: usize, actual: usize },
+    #[error("invalid date `{0}` (expected YYYY-MM-DD)")]
+    InvalidDate(String),
+    #[error("invalid severity `{0}` (expected Critical/High/Medium/Low)")]
+    InvalidSeverity(String),
+    #[error("invalid status `{0}` (expected open/processed/dismissed)")]
+    InvalidStatus(String),
+}
+
+impl FromStr for Status {
+    type Err = RowParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "open" => Ok(Status::Open),
+            "processed" => Ok(Status::Processed),
+            "dismissed" => Ok(Status::Dismissed),
+            other => Err(RowParseError::InvalidStatus(other.to_string())),
+        }
+    }
+}
+
+impl FromStr for Severity {
+    type Err = RowParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Critical" => Ok(Severity::Critical),
+            "High" => Ok(Severity::High),
+            "Medium" => Ok(Severity::Medium),
+            "Low" => Ok(Severity::Low),
+            other => Err(RowParseError::InvalidSeverity(other.to_string())),
+        }
+    }
+}
+
+/// Parse one pipe-delimited inbox row line into an [`AdvisoryRow`].
+///
+/// Expects exactly 8 cells in order:
+/// `Date | Advisory ID | Source URL | Package | File:Line | Severity | Status | Note`.
+///
+/// Whitespace around each cell is trimmed. Leading/trailing `|` are stripped.
+///
+/// # Errors
+/// - [`RowParseError::EmptyLine`] if line is empty after trimming.
+/// - [`RowParseError::WrongCellCount`] if cell count != 8.
+/// - [`RowParseError::InvalidDate`] if Date cell does not match `YYYY-MM-DD`.
+/// - [`RowParseError::InvalidSeverity`] / [`RowParseError::InvalidStatus`] for unknown enum values.
+pub fn parse_row(line: &str) -> Result<AdvisoryRow, RowParseError> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return Err(RowParseError::EmptyLine);
+    }
+    let inner = trimmed.trim_start_matches('|').trim_end_matches('|');
+    let cells: Vec<&str> = inner.split('|').map(str::trim).collect();
+    if cells.len() != 8 {
+        return Err(RowParseError::WrongCellCount {
+            expected: 8,
+            actual: cells.len(),
+        });
+    }
+    let date = NaiveDate::parse_from_str(cells[0], "%Y-%m-%d")
+        .map_err(|_| RowParseError::InvalidDate(cells[0].to_string()))?;
+    let advisory_id = cells[1].to_string();
+    let source_url = cells[2].to_string();
+    let package = cells[3].to_string();
+    let file_line = cells[4].to_string();
+    let severity = Severity::from_str(cells[5])?;
+    let status = Status::from_str(cells[6])?;
+    let note = cells[7].to_string();
+    Ok(AdvisoryRow {
+        date,
+        advisory_id,
+        source_url,
+        package,
+        file_line,
+        severity,
+        status,
+        note,
+    })
 }
 
 #[cfg(test)]
@@ -122,5 +209,57 @@ mod tests {
         assert_eq!(row.date, NaiveDate::from_ymd_opt(2026, 5, 28).unwrap());
         assert_eq!(row.severity, Severity::High);
         assert_eq!(row.status, Status::Open);
+    }
+
+    #[test]
+    fn parse_row_happy_path() {
+        let line = "| 2026-05-28 | CVE-2026-0001 | https://example.com/cve | next@<15.5.17 | src/middleware.ts:42 | High | open | - |";
+        let row = parse_row(line).expect("happy path parses");
+        assert_eq!(row.advisory_id, "CVE-2026-0001");
+        assert_eq!(row.severity, Severity::High);
+        assert_eq!(row.status, Status::Open);
+        assert_eq!(row.note, "-");
+    }
+
+    #[test]
+    fn parse_row_bad_date_errors() {
+        let line = "| not-a-date | CVE-X | u | p | f:1 | High | open | - |";
+        let err = parse_row(line).unwrap_err();
+        assert!(matches!(err, RowParseError::InvalidDate(_)));
+    }
+
+    #[test]
+    fn parse_row_bad_severity_errors() {
+        let line = "| 2026-05-28 | CVE-X | u | p | f:1 | Critic | open | - |";
+        let err = parse_row(line).unwrap_err();
+        assert!(matches!(err, RowParseError::InvalidSeverity(s) if s == "Critic"));
+    }
+
+    #[test]
+    fn parse_row_wrong_cell_count() {
+        let line = "| 2026-05-28 | CVE-X | only-three |";
+        let err = parse_row(line).unwrap_err();
+        assert!(matches!(
+            err,
+            RowParseError::WrongCellCount {
+                expected: 8,
+                actual: 3
+            }
+        ));
+    }
+
+    #[test]
+    fn status_from_str_roundtrip() {
+        assert_eq!("open".parse::<Status>().unwrap(), Status::Open);
+        assert_eq!("dismissed".parse::<Status>().unwrap(), Status::Dismissed);
+        assert!("OPEN".parse::<Status>().is_err());
+    }
+
+    #[test]
+    fn severity_from_str_canonical() {
+        assert_eq!("Critical".parse::<Severity>().unwrap(), Severity::Critical);
+        assert_eq!("Low".parse::<Severity>().unwrap(), Severity::Low);
+        // Case-sensitive PascalCase — lowercase must fail.
+        assert!("critical".parse::<Severity>().is_err());
     }
 }
