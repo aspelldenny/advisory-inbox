@@ -54,3 +54,25 @@ Exit codes:
 | `2`  | Rows JSON missing or malformed (expected envelope `{ "rows": [...] }`) |
 
 See `docs/ARCHITECTURE.md` §1 for full CLI surface and `docs/BACKLOG.md` for phiếu pipeline.
+
+### `advisory-inbox append`
+
+Insert filtered rows into the inbox markdown at the top of `## Rows`, atomic-write.
+
+```bash
+advisory-inbox append --inbox <FILE> --rows-json <FILE>
+```
+
+**Input:** `--inbox` markdown path, `--rows-json` JSON file with `{ "rows": [...] }` shape (e.g., output of `dedup`'s `kept` array re-wrapped).
+
+**Output (stdout):** `{ "appended_count": N, "total_open": M }`.
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0    | Success |
+| 1    | Inbox missing `## Rows` heading |
+| 2    | Write error (rows JSON malformed, file unreadable, disk full, etc.) |
+
+**Atomic write:** uses temp+fsync+rename protocol per INV-LOCAL-002 — partial-write safe across crash/power-loss.

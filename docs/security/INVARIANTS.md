@@ -114,6 +114,10 @@ temp.persist(target)?;  // atomic rename
 
 **Status:** Active. Inherits INV-21 of advisory-cron pattern.
 
+**First concrete user:** `src/inbox.rs::write_atomic` (P006, shipped 2026-05-28). Reference shape — future state-write subcmds (P007 migrate-state, P008 state-backfill, P009 scan-and-append, P011 MCP `append` tool) MUST follow same protocol.
+
+**Note on user-supplied path:** `--inbox <FILE>` argument is user-controlled. Worker / Sếp PHẢI ensure path points to intended inbox markdown file (typo could write to wrong file). Atomic protocol ensures partial-write safety; it does NOT validate semantic intent. No file-content echoing into stderr/log (Sub-mech F clean).
+
 ### INV-LOCAL-003 — JSON serialization via serde_json (no manual)
 
 **Statement:** PR introducing code that serializes structured data to JSON PHẢI use `serde_json::to_string` (or `to_writer`) via `#[derive(Serialize)]` — NEVER hand-rolled JSON string assembly.

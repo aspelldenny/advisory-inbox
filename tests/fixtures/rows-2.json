@@ -1,0 +1,24 @@
+{
+  "rows": [
+    {
+      "date": "2026-05-28",
+      "advisory_id": "CVE-NEW-1",
+      "source_url": "https://nvd.nist.gov/vuln/detail/CVE-NEW-1",
+      "package": "next@<15.5.17",
+      "file_line": "src/middleware.ts:42",
+      "severity": "High",
+      "status": "open",
+      "note": "-"
+    },
+    {
+      "date": "2026-05-28",
+      "advisory_id": "CVE-NEW-2",
+      "source_url": "https://nvd.nist.gov/vuln/detail/CVE-NEW-2",
+      "package": "flask@<2.3.5",
+      "file_line": "app.py:8",
+      "severity": "Medium",
+      "status": "open",
+      "note": "-"
+    }
+  ]
+}

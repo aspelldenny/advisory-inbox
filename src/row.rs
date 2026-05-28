@@ -3,6 +3,7 @@
 //! Serialized as JSON between subcommands (parse-report → dedup → append).
 //! Status/Severity enums lock the wire format per upstream advisory convention.
 
+use std::fmt;
 use std::str::FromStr;
 
 use chrono::NaiveDate;
@@ -140,6 +141,53 @@ pub fn parse_row(line: &str) -> Result<AdvisoryRow, RowParseError> {
     })
 }
 
+impl fmt::Display for Status {
+    /// Render status as lowercase variant name per ARCHITECTURE §3 and serde `rename_all = "lowercase"`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Status::Open => f.write_str("open"),
+            Status::Processed => f.write_str("processed"),
+            Status::Dismissed => f.write_str("dismissed"),
+        }
+    }
+}
+
+impl fmt::Display for Severity {
+    /// Render severity as PascalCase variant name per ARCHITECTURE §3 and serde `rename_all = "PascalCase"`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Severity::Critical => f.write_str("Critical"),
+            Severity::High => f.write_str("High"),
+            Severity::Medium => f.write_str("Medium"),
+            Severity::Low => f.write_str("Low"),
+        }
+    }
+}
+
+impl fmt::Display for AdvisoryRow {
+    /// Render as pipe-delimited 8-col line per ARCHITECTURE §3.
+    ///
+    /// Format: `| {date} | {advisory_id} | {source_url} | {package} | {file_line} | {severity} | {status} | {note} |`
+    ///
+    /// - `date`: ISO calendar date `YYYY-MM-DD` (chrono NaiveDate default Display).
+    /// - `severity`: PascalCase variant name (`Critical`/`High`/`Medium`/`Low`).
+    /// - `status`: lowercase variant name (`open`/`processed`/`dismissed`).
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "| {date} | {advisory_id} | {source_url} | {package} | {file_line} | {severity} | {status} | {note} |",
+            date = self.date,
+            advisory_id = self.advisory_id,
+            source_url = self.source_url,
+            package = self.package,
+            file_line = self.file_line,
+            severity = self.severity,
+            status = self.status,
+            note = self.note,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,5 +309,24 @@ mod tests {
         assert_eq!("Low".parse::<Severity>().unwrap(), Severity::Low);
         // Case-sensitive PascalCase — lowercase must fail.
         assert!("critical".parse::<Severity>().is_err());
+    }
+
+    #[test]
+    fn advisory_row_display_pipe_delim() {
+        let row = AdvisoryRow {
+            date: NaiveDate::from_ymd_opt(2026, 5, 28).unwrap(),
+            advisory_id: "CVE-2026-9999".to_string(),
+            source_url: "https://nvd.nist.gov/vuln/detail/CVE-2026-9999".to_string(),
+            package: "next@<15.5.17".to_string(),
+            file_line: "src/middleware.ts:42".to_string(),
+            severity: Severity::High,
+            status: Status::Open,
+            note: "-".to_string(),
+        };
+        let rendered = format!("{row}");
+        assert_eq!(
+            rendered,
+            "| 2026-05-28 | CVE-2026-9999 | https://nvd.nist.gov/vuln/detail/CVE-2026-9999 | next@<15.5.17 | src/middleware.ts:42 | High | open | - |"
+        );
     }
 }
