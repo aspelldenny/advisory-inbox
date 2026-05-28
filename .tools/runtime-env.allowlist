@@ -1,0 +1,33 @@
+# Runtime env allowlist — advisory-inbox
+#
+# Declares expected runtime env keys for advisory-inbox session.
+# Used by scripts/session-start-banner.sh (Sub-mech F runtime state preflight).
+#
+# Format: YAML-like, 3 groups (required / optional / forbidden).
+# Keys only — NEVER values. This file is committed.
+#
+# Spec source: ~/sos-kit/docs/WORKFLOW_V2.1.md §12.
+# Enforcement: docs/RULES.md §8, docs/security/INVARIANTS.md §4.
+
+required:
+  # Currently none — advisory-inbox is pure-local CLI, no required env at MVP.
+
+optional:
+  - RUST_LOG               # tracing verbosity (debug/info/warn)
+  - CARGO_HOME             # cargo cache override
+  - CARGO_TARGET_DIR       # target dir override
+  - RUSTUP_HOME            # rustup home override
+  - GITHUB_PERSONAL_ACCESS_TOKEN  # for gh CLI when MCP github server invoked
+
+forbidden:
+  # Inherited tokens from shell/Claude Desktop that conflict with gh CLI keychain auth.
+  # Tarot P001 advisory-cron precedent: GITHUB_TOKEN inherit broke gh pr diff.
+  - GITHUB_TOKEN           # use env -u or unset; gh CLI uses keychain auth
+  # Tokens for services advisory-inbox doesn't call — runtime leak risk if inherited.
+  - AWS_ACCESS_KEY_ID      # advisory-inbox doesn't use AWS
+  - AWS_SECRET_ACCESS_KEY
+  - OPENAI_API_KEY         # advisory-inbox doesn't call OpenAI
+  - ANTHROPIC_API_KEY      # advisory-inbox doesn't call Claude directly (agent does)
+  - OPENROUTER_API_KEY     # advisory-inbox doesn't call AI
+  - SUPABASE_KEY           # tarot-specific, not for this repo
+  - PAYOS_CHECKSUM_KEY     # tarot-specific

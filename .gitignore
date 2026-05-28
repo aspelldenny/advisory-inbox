@@ -1,0 +1,25 @@
+# Cargo
+/target
+Cargo.lock.bak
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+
+# Claude Code local state (architect marker, etc.)
+.claude/.architect-active
+.claude/settings.local.json
+
+# Runtime test artifacts
+/tmp-test-*
+/test-output-*
+
+# OS
+Thumbs.db
