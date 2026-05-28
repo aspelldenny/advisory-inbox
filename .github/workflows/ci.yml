@@ -1,0 +1,62 @@
+name: CI
+
+# Workflow v2.1 §7 Sub-mech E (Environment drift gap) defense:
+#   `cargo build --release` from clean target/ → catches local-vs-fresh-install drift.
+#   Runs on every push + PR. No external services needed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check + Test + Clippy + Fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo check
+        run: cargo check --all-targets
+
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --all
+
+      - name: cargo build --release
+        run: cargo build --release
+
+      - name: Binary size check (< 10 MB)
+        run: |
+          SIZE=$(stat -c%s target/release/advisory-inbox)
+          MAX=10485760
+          echo "Binary size: $SIZE bytes (max $MAX)"
+          if [ "$SIZE" -gt "$MAX" ]; then
+            echo "::error::Binary size $SIZE exceeds budget $MAX"
+            exit 1
+          fi

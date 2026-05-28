@@ -1,0 +1,52 @@
+{
+  "_comment": "Project MCP config — committed for collaborator parity. Per-user override: .claude/settings.local.json (gitignored).",
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/nguyenhuuanh/advisory-inbox"
+      ]
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    },
+    "context7": {
+      "_comment": "HTTP MCP — verify lib API trước viết phiếu (clap, tokio, rmcp, serde, etc.). REQUIRED for Architect Bước 0 tool preflight per RULES.md §4. Without this, P006-style false confidence reoccurs.",
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "docs-gate": {
+      "command": "/Users/nguyenhuuanh/.cargo/bin/docs-gate",
+      "args": [
+        "serve"
+      ]
+    },
+    "ship": {
+      "command": "/Users/nguyenhuuanh/.cargo/bin/ship",
+      "args": [
+        "serve"
+      ]
+    },
+    "_advisory-inbox": {
+      "_comment": "ENABLED after P010 ship — uncomment + rename key to 'advisory-inbox'. Binary path: ~/.cargo/bin/advisory-inbox (after cargo install).",
+      "_command": "/Users/nguyenhuuanh/.cargo/bin/advisory-inbox",
+      "_args": ["serve"]
+    }
+  }
+}
