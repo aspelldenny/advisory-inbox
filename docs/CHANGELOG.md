@@ -4,6 +4,22 @@
 
 ---
 
+## P005 — dedup subcmd (2026-05-28)
+
+**Type:** feat | **Tầng:** 1 | **Lane:** Normal
+
+- Wire `src/cli/dedup.rs` — `run(state: PathBuf, rows_json: PathBuf) -> anyhow::Result<()>` reads state via `state::read`, deserializes rows envelope `{ "rows": [...] }`, partitions rows into `kept`/`skipped` against `state.seen_advisories`, emits JSON `{ "kept": [...], "skipped": [...], "observed_ids": [...] }` to stdout. `observed_ids` carries every input row's `advisory_id` regardless of kept/skipped.
+- Extend `src/state.rs`: add `pub fn read(&Path) -> Result<StateFile, StateReadError>` (read + parse + schema_version validate). Add `pub enum StateReadError` (Io/Json/SchemaMismatch, all via `thiserror`). SchemaMismatch Display hints `advisory-inbox migrate-state` (P007 wire-up).
+- Remove `#![allow(dead_code)]` from `src/state.rs` (consumer wire-in complete: `read()` + `cli::dedup`).
+- `src/main.rs`: dispatch `Commands::Dedup { state, rows_json }` maps `StateReadError` → exit 1, other → exit 2; anyhow cause chain printed to stderr.
+- New fixtures `tests/fixtures/state-3ids.json` + `tests/fixtures/rows-5.json` (5 rows, 2 match state IDs).
+- New integration test `tests/dedup_cli.rs` (4 cases: happy 3-kept/2-skipped, state missing → 1, schema mismatch → 1, rows malformed → 2).
+- New unit tests in `src/state.rs`: `read_happy_path`, `read_missing_file_errors`, `read_schema_mismatch_errors`, `read_malformed_json_errors`.
+
+home: docs/CHANGELOG.md (operational), docs/ARCHITECTURE.md §5 (durable scaffold reference)
+
+---
+
 ## P004 — parse-report subcmd (2026-05-28)
 
 **Type:** feat | **Tầng:** 1 | **Lane:** Normal
