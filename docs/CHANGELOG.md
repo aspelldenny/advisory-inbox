@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-05-28 — P001: Scaffold CLI surface
+
+### P001 — Scaffold CLI surface (clap derive, 8 subcommand stubs)
+
+- Added `src/main.rs` with clap 4 derive `Cli` + `Commands` enum (8 variants).
+- Added `src/cli/` module skeleton with 8 stub handlers (`parse_report`, `dedup`, `append`, `migrate_state`, `state_backfill`, `scan_and_append`, `serve`, `init`).
+- Each stub prints `TODO: <subcmd> — wired in P<NNN>` and exits 0 per BACKLOG acceptance.
+- No new dependency added. `Cargo.toml` unchanged.
+- Lane: Normal. Sub-mech checks: B (cargo check + cargo build), D (ARCHITECTURE §1 + §5 grep preserved).
+
+home: docs/CHANGELOG.md (operational), docs/ARCHITECTURE.md §5 (durable scaffold reference)
+
+---
+
 ## 2026-05-28 — Bootstrap (P000)
 
 - Initial repo seed via Workflow v2.1 pilot setup
