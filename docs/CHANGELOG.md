@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-05-28 — P002: row/state types (serde)
+
+### Added
+- `src/row.rs`: `AdvisoryRow` struct (8 fields per ARCHITECTURE §3) + `Status` enum (`open`/`processed`/`dismissed`) + `Severity` enum (`Critical`/`High`/`Medium`/`Low`).
+- `src/state.rs`: `StateFile` struct (4 fields per ARCHITECTURE §2) + `pub const SCHEMA_VERSION: u32 = 1`.
+- Unit tests inline: 4 in `row.rs` (roundtrip, status lowercase, severity PascalCase, known-JSON parse), 4 in `state.rs` (roundtrip, schema_version const, known-JSON parse, seen_advisories order preserved).
+
+### Changed
+- `src/main.rs`: added `mod row;` + `mod state;` declarations (alphabetical after `mod cli;`).
+- `docs/ARCHITECTURE.md` §5: mark `row.rs` + `state.rs` shipped.
+
+### Notes
+- Types declared but not yet consumed — `src/cli/*.rs` stubs unchanged (still printf TODO). P003 sentinel parser is next consumer.
+- Schema lock: `SCHEMA_VERSION = 1`. Sub-mech C bump rule armed for P007 migrate-state.
+- No new dependencies. `chrono` already carries `features = ["serde"]` (Cargo.toml line 17).
+- `#![allow(dead_code)]` added to both modules (scaffold types, no consumer yet in binary code path). Will be removed when P004+ wire-in imports them.
+
+home: docs/CHANGELOG.md (operational), docs/ARCHITECTURE.md §5 (durable scaffold reference)
+
+---
+
 ## 2026-05-28 — P001: Scaffold CLI surface
 
 ### P001 — Scaffold CLI surface (clap derive, 8 subcommand stubs)
