@@ -189,7 +189,7 @@ Hoặc mày có thể là **Quản đốc** (main session) — xem `.claude/agen
 - **Time:** `chrono` (ISO-8601 timestamp parse/format cho state.last_scan_at)
 - **Errors:** `anyhow` (app-level) + `thiserror` (library-level)
 - **Atomic write:** `tempfile` (temp + rename pattern cho inbox + state)
-- **Regex:** `regex` (sentinel marker `<!-- INBOX_APPEND_START/END -->` parser)
+- **Regex:** `regex` (reserved for `inbox.rs` row/table pattern matching; **`sentinel.rs` uses `str::find` on literal markers `<!-- INBOX_APPEND_START/END -->` — no metacharacters, no regex needed**)
 - **MCP:** `rmcp` 1.7.0 (server + transport-io feature)
 - **Testing:** `#[cfg(test)]` + `assert_cmd` + `predicates`
 - **MSRV target:** Rust 1.85 (edition 2024 requires)
@@ -266,7 +266,7 @@ src/
 ├── state.rs             # State file JSON schema + read/write atomic
 ├── inbox.rs             # Inbox markdown parser + writer atomic
 ├── row.rs               # AdvisoryRow struct + serialize
-└── sentinel.rs          # Sentinel marker regex + extract block
+└── sentinel.rs          # Sentinel marker extract block (str::find on literal markers)
 ```
 
 > Chi tiết evolved per phase trong `docs/ARCHITECTURE.md`.
