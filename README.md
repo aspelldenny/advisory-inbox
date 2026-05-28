@@ -188,3 +188,34 @@ cat path/to/agent-report.md | advisory-inbox scan-and-append \
 - `seen_advisories[]` — extended with all observed IDs (kept ∪ skipped). Monotonic, never shrinks.
 - `last_scan_at` — updated to current UTC time (scan event).
 - `agent_version` + `schema_version` — preserved unchanged.
+
+## MCP server mode
+
+`advisory-inbox` can also run as an MCP (Model Context Protocol) server, exposing its
+functionality to Claude Code and other MCP-capable AI assistants via JSON-RPC 2.0 over
+stdin/stdout.
+
+```sh
+# Direct invocation (handshake-only as of P010; tools come in P011):
+advisory-inbox serve
+```
+
+Or wire into your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "advisory-inbox": {
+      "command": "/path/to/advisory-inbox",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+The server responds to MCP `initialize` requests with server info (`name: "advisory-inbox"`,
+`version: <Cargo.toml>`). As of P010, no tools are registered — P011 will expose 6 tools
+(`parse_report`, `dedup`, `append`, `migrate_state`, `state_backfill`, `scan_and_append`).
+
+Exit code 5 indicates MCP transport / runtime error. All other exit codes apply only to direct
+CLI subcommands (see Exit codes table in each subcmd section above).

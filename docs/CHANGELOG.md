@@ -4,6 +4,42 @@
 
 ---
 
+## P010 — `serve` subcmd: rmcp stdio handshake (2026-05-28)
+
+**Type:** feat | **Tầng:** 1 | **Lane:** Guarded
+
+### Added
+
+- `cli/serve.rs` real impl: rmcp 1.7.0 MCP server over stdio JSON-RPC 2.0. `AdvisoryInboxServer` unit struct implementing `ServerHandler` with custom `get_info()` returning `Implementation { name: "advisory-inbox", version: env!("CARGO_PKG_VERSION") }` + empty `ServerCapabilities` (no tools declared — honest until P011). Tokio `current_thread` runtime built inline (no `#[tokio::main]` in main.rs — sync-main contract preserved per P001-P009).
+- Handshake support only: server responds to `initialize` JSON-RPC requests with valid `InitializeResult` per MCP spec. `tools/list` returns empty (default `ServerHandler::list_tools`). P011 will wire 6 tools.
+- `tests/serve_cli.rs` integration test: spawns binary, pipes `initialize` JSON-RPC to stdin, asserts response contains `"name":"advisory-inbox"` + `"id":1` echo + `"jsonrpc":"2.0"` envelope, exit 0 on stdin EOF.
+- `src/cli/serve.rs` unit tests: `AdvisoryInboxServer::get_info()` returns correct name/version; capabilities.tools is None (no tools declared).
+
+### Changed
+
+- `main.rs` `Commands::Serve` dispatch arm: replaced flat passthrough with error → exit 5 mapping (MCP transport error class per ARCHITECTURE §1 exit-code table — first usage of code 5).
+- First tokio runtime instantiation in this binary. Cargo.toml `tokio = { features = ["rt", "macros", "io-std"] }` exercised; current_thread flavor (no `rt-multi-thread` feature gate).
+- First rmcp 1.7.0 integration. `ServiceExt::serve` + `transport::io::stdio` + `ServerHandler` trait surface used.
+
+### Architecture decisions (P010)
+
+- `src/mcp/` module DEFERRED to P011 — handshake-only fits in `cli/serve.rs`. ARCHITECTURE §5 module layout still lists planned `src/mcp/`; entry status now "P011 (planned)".
+- ServerCapabilities ships empty/default — declaring tools while returning none is misleading. P011 flips `.enable_tools()`.
+- Used `Implementation::new("advisory-inbox", env!("CARGO_PKG_VERSION"))` constructor (cleaner than field-init with `#[non_exhaustive]` struct).
+- Used `ServerInfo::new(capabilities).with_server_info(impl)` builder pattern (confirmed from rmcp 1.7.0 model.rs source).
+
+### Test counts
+
+Baseline 62 (post-P009) → post-P010: 65 total (41 unit + 24 integration; +2 unit in cli::serve::tests, +1 integration in tests/serve_cli.rs).
+
+### Atomicity caveat / runtime notes
+
+- No state file writes this phiếu — MCP handshake is read-only on filesystem.
+- `.mcp.json` `_post_p010` example block NOT yet moved into `mcpServers` namespace — that requires `cargo install --path .` followed by manual config edit (deploy step, out-of-scope P010).
+- Binary size post-P010: ~1.96 MB (up from unknown P009 baseline; well under 10 MB PROJECT.md criterion).
+
+---
+
 ## P009 — scan-and-append composite subcmd (2026-05-28)
 
 **Type:** feat | **Tầng:** 1 | **Lane:** Guarded
