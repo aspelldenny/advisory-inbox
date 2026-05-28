@@ -10,6 +10,7 @@
 - YYYY-MM-DD P<NNN>: <one-line summary>, <key finding> → see docs/discoveries/P<NNN>.md
 -->
 
+- 2026-05-28 P011: MCP tool dispatch shipped (6 tools via #[tool_router]+#[tool_handler], schemars=1.0 dep added, rmcp::from_build_env() reads rmcp crate name not ours → manual get_info() required, Parameters/Json at handler::server::wrapper not router::tool, Strategy B extract for append+scan_and_append, 69 tests total, binary ~2.16 MB) → see docs/discoveries/P011.md
 - 2026-05-28 P010: serve subcmd wired (rmcp 1.7.0 stdio handshake, first tokio current_thread runtime, Implementation::new() + ServerInfo builder used, waiting() returns Result<QuitReason,JoinError> not (), ServerCapabilities empty until P011, 65 tests total, binary ~1.96 MB) → see docs/discoveries/P010.md
 - 2026-05-28 P009: scan-and-append composite wired (INV-LOCAL-002 4th caller — inbox::write_atomic + state::write_atomic in same invocation), NOT cross-file atomic (inbox-first write order; recovery = state-backfill), 3 integration tests pass, 62 tests total → see docs/discoveries/P009.md
 - 2026-05-28 P008: state-backfill wired (INV-LOCAL-002 third user — state::write_atomic), inbox::parse_rows added + InboxError::ParseRow variant, 4 IDs union from fixture (Sub-mech C pass), dry-run byte-identity verified (Sub-mech F), 59 tests total → see docs/discoveries/P008.md

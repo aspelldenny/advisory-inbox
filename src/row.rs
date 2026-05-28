@@ -7,11 +7,12 @@ use std::fmt;
 use std::str::FromStr;
 
 use chrono::NaiveDate;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Status of an advisory row — Sếp gates `open` → `processed`/`dismissed`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     Open,
@@ -20,7 +21,7 @@ pub enum Status {
 }
 
 /// Severity per upstream advisory (Critical/High/Medium/Low only — RULES.md).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "PascalCase")]
 pub enum Severity {
     Critical,
@@ -33,7 +34,7 @@ pub enum Severity {
 ///
 /// Column order (markdown): Date | Advisory ID | Source URL | Package | File:Line | Severity | Status | Note.
 /// JSON field order matches struct field order (serde default).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AdvisoryRow {
     /// Date the advisory was observed (YYYY-MM-DD).
     pub date: NaiveDate,
